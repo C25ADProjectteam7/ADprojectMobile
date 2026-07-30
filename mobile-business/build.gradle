@@ -1,9 +1,11 @@
 // mobile-business : core services, agent orchestration, Amadeus/Google Places clients
-// Depends on: mobile-common, mobile-data, mobile-security
 
 plugins {
+    id 'java'
     id 'io.spring.dependency-management'
 }
+
+repositories { mavenCentral() }
 
 dependencies {
     implementation project(':mobile-common')

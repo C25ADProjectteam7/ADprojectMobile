@@ -1,11 +1,12 @@
 // mobile-api : REST controllers, Spring Boot entry point, OpenAPI docs
-// Depends on: all other modules
-// Package: this module contains main() — builds the executable JAR
 
 plugins {
+    id 'java'
     id 'org.springframework.boot'
     id 'io.spring.dependency-management'
 }
+
+repositories { mavenCentral() }
 
 dependencies {
     implementation project(':mobile-common')
@@ -20,5 +21,5 @@ dependencies {
 
 bootJar {
     archiveFileName = 'adproject-mobile-api.jar'
-    layered { enabled = true }    // layered JAR = faster Docker image rebuilds
+    layered { enabled = true }
 }

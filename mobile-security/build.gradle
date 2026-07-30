@@ -1,9 +1,11 @@
 // mobile-security : JWT token handling, Spring Security filter chain, user auth
-// Depends on: mobile-common, mobile-data
 
 plugins {
+    id 'java'
     id 'io.spring.dependency-management'
 }
+
+repositories { mavenCentral() }
 
 dependencies {
     implementation project(':mobile-common')

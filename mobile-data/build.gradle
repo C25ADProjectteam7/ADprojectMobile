@@ -1,10 +1,11 @@
 // mobile-data : JPA entities, Spring Data repositories, DB connection config
-// Depends on: mobile-common
-// Used by: mobile-security, mobile-business, mobile-api
 
 plugins {
+    id 'java'
     id 'io.spring.dependency-management'
 }
+
+repositories { mavenCentral() }
 
 dependencies {
     implementation project(':mobile-common')
