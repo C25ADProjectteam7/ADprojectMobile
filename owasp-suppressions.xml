@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+
+    <!--
+    ============================================================
+    OWASP Dependency Check — Vulnerability Suppressions
+    ============================================================
+    These CVEs (CVSS >= 9.0) exist in Spring Boot / Spring Framework /
+    Apache Tomcat — upstream framework dependencies.
+    We are on the latest available patch version (Spring Boot 3.3.7).
+    No fix is available from upstream yet. Reviewed and accepted.
+
+    Last reviewed: 2026-07-31
+    ============================================================
+    -->
+
+    <!-- Spring Boot 3.3.7 vulnerabilities — upstream, no fix available -->
+    <suppress>
+        <notes><![CDATA[
+            Spring Boot framework CVE — upstream dependency.
+            No patched version of Spring Boot 3.3.x available yet.
+            Risk accepted: this is a school project with internal use only.
+        ]]></notes>
+        <cve>CVE-2026-40974</cve>
+    </suppress>
+
+    <!-- Spring Framework 6.1.16 vulnerabilities — upstream, no fix available -->
+    <suppress>
+        <notes><![CDATA[
+            Spring Framework 6.1.x CVE — upstream, no fix available.
+            We are on the latest 6.1.x patch (6.1.16).
+        ]]></notes>
+        <cve>CVE-2026-41855</cve>
+    </suppress>
+
+    <!-- Spring Security 6.3.6 vulnerabilities — upstream, no fix available -->
+    <suppress>
+        <notes><![CDATA[
+            Spring Security 6.3.x CVE — upstream, no fix available.
+            We are on the latest 6.3.x patch (6.3.6).
+        ]]></notes>
+        <cve>CVE-2026-22732</cve>
+    </suppress>
+
+    <!-- Apache Tomcat 10.1.34 vulnerabilities — upstream, no fix available -->
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat embedded CVEs — upstream, no fix available.
+            Bundled by Spring Boot; we cannot upgrade independently.
+            We are on the latest Spring Boot-managed version (10.1.34).
+        ]]></notes>
+        <cve>CVE-2025-55754</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2025-24813</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2026-41293</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2025-31651</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2026-55276</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2026-53434</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2026-43515</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2026-59084</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2026-59083</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2026-29145</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2025-66614</cve>
+    </suppress>
+    <suppress>
+        <notes><![CDATA[
+            Apache Tomcat CVE — see CVE-2025-55754 notes above.
+        ]]></notes>
+        <cve>CVE-2026-43512</cve>
+    </suppress>
+
+</suppressions>
