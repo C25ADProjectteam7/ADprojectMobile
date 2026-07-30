@@ -7,6 +7,12 @@ plugins {
 
 repositories { mavenCentral() }
 
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
 dependencies {
     implementation project(':mobile-common')
 
