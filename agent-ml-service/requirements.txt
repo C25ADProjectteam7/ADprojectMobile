@@ -1,0 +1,27 @@
+# ============================================================
+# Python Agent + ML Service — dependencies
+# Install: pip install -r requirements.txt
+# ============================================================
+
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.0
+
+# LLM / Agent (OpenAI-compatible → DeepSeek)
+openai==1.45.0
+
+# Async HTTP
+httpx==0.27.2
+aiohttp==3.10.5
+
+# ML — price prediction + budget allocation
+scikit-learn==1.5.1
+pandas==2.2.2
+numpy==1.26.4
+xgboost==2.1.1
+joblib==1.4.2
+
+# Utilities
+python-dotenv==1.0.1
+pillow==10.4.0

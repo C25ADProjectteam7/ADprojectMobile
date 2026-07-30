@@ -1,0 +1,9 @@
+// Multi-module project — all submodules share one Spring Boot application context
+
+rootProject.name = 'ADprojectMobile'
+
+include 'mobile-common'       // Shared: DTOs, exceptions, constants, utilities
+include 'mobile-security'     // Auth: JWT, Spring Security filters
+include 'mobile-data'         // Persistence: JPA entities, repositories, DB config
+include 'mobile-business'     // Business logic: trip planning, agent orchestration, 3rd-party APIs
+include 'mobile-api'          // REST API entry point: controllers, OpenAPI docs, main class

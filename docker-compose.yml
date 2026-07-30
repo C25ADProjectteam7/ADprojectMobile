@@ -1,0 +1,82 @@
+# ============================================================
+# Docker Compose — Mobile Platform (API + Agent/ML + MySQL)
+# Start: docker compose up -d
+# ============================================================
+
+services:
+
+  # ---- MySQL 8.0 ----
+  mysql:
+    image: mysql:8.0
+    container_name: mobile-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-Root@2026!}
+      MYSQL_DATABASE: mobile
+      MYSQL_USER: mobile_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-Mobile@2026!}
+    volumes:
+      - mysql-data:/var/lib/mysql                        # persist data
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "127.0.0.1:3306:3306"                             # localhost only
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost",
+             "-u", "mobile_user", "-p${MYSQL_PASSWORD:-Mobile@2026!}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mobile-network
+
+  # ---- Spring Boot API ----
+  spring-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mobile-spring-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      agent-ml:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - DB_PASSWORD=${MYSQL_PASSWORD:-Mobile@2026!}
+      - JWT_SECRET=${JWT_SECRET}
+      - AGENT_ML_URL=http://agent-ml:8000
+      - AMADEUS_API_KEY=${AMADEUS_API_KEY}
+      - AMADEUS_API_SECRET=${AMADEUS_API_SECRET}
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
+    volumes:
+      - app-images:/var/www/adproject-mobile/images
+    ports:
+      - "127.0.0.1:8080:8080"                             # localhost only (Nginx proxies)
+    networks:
+      - mobile-network
+
+  # ---- Python Agent + ML ----
+  agent-ml:
+    build:
+      context: ./agent-ml-service
+      dockerfile: Dockerfile
+    container_name: mobile-agent-ml
+    restart: unless-stopped
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - AMADEUS_API_KEY=${AMADEUS_API_KEY}
+      - AMADEUS_API_SECRET=${AMADEUS_API_SECRET}
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
+    volumes:
+      - ./agent-ml-service/models:/app/models
+    networks:
+      - mobile-network
+
+volumes:
+  mysql-data:
+  app-images:
+
+networks:
+  mobile-network:
+    driver: bridge

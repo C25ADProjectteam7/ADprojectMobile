@@ -1,0 +1,13 @@
+// mobile-data : JPA entities, Spring Data repositories, DB connection config
+// Depends on: mobile-common
+// Used by: mobile-security, mobile-business, mobile-api
+
+plugins {
+    id 'io.spring.dependency-management'
+}
+
+dependencies {
+    implementation project(':mobile-common')
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    runtimeOnly "com.mysql:mysql-connector-j:${mysqlConnectorVersion}"
+}

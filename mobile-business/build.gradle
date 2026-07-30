@@ -1,0 +1,15 @@
+// mobile-business : core services, agent orchestration, Amadeus/Google Places clients
+// Depends on: mobile-common, mobile-data, mobile-security
+
+plugins {
+    id 'io.spring.dependency-management'
+}
+
+dependencies {
+    implementation project(':mobile-common')
+    implementation project(':mobile-data')
+    implementation project(':mobile-security')
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.retry:spring-retry'
+    implementation 'org.springframework:spring-aspects'
+}

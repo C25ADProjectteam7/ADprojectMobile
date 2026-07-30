@@ -1,0 +1,11 @@
+// mobile-common : shared DTOs, exceptions, constants, and utility classes
+// Depends on: nothing (leaf module)
+// Used by: all other modules
+
+plugins {
+    id 'io.spring.dependency-management'
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+}

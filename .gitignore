@@ -1,0 +1,48 @@
+# ===== Java / Gradle =====
+build/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+*.jar
+*.war
+*.log
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+*.swo
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Environment & Secrets =====
+.env
+*.env
+application-local.properties
+application-local.yml
+**/secrets/
+*.pem
+*.key
+*.jks
+*.p12
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ===== Docker =====
+docker-compose.override.yml
+
+# ===== Sensitive Data (DO NOT COMMIT) =====
+# API Keys, Passwords, Tokens — 这些文件绝不上传 GitHub
+# 在 CI/CD 中通过 GitHub Secrets 或环境变量注入
