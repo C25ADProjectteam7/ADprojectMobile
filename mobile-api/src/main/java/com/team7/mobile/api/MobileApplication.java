@@ -17,4 +17,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 // TODO: 配置 scanBasePackages = "com.team7.mobile"，启用所有子模块的自动装配
 @SpringBootApplication
 public class MobileApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(MobileApplication.class, args);
+    }
 }

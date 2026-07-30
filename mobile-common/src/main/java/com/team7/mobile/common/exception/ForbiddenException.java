@@ -6,3 +6,4 @@ package com.team7.mobile.common.exception;
  * 示例：普通员工尝试访问管理员专属 API
  */
 // TODO: 继承 BusinessException，errorCode = "FORBIDDEN"
+

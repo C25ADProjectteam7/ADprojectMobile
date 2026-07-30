@@ -7,3 +7,4 @@ package com.team7.mobile.common.exception;
  * Spring 全局异常处理器根据异常类型返回对应的 HTTP 状态码
  */
 // TODO: 定义 errorCode + message，子类扩展具体异常类型
+

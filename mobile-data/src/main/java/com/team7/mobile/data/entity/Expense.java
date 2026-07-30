@@ -13,5 +13,10 @@ import java.time.LocalDateTime;
  */
 // TODO: 定义字段 — id, trip(FK), user(FK), category, amount, currency
 // TODO: description, receiptUrl(发票图片), status, submittedAt, reviewedAt, reviewNote
+@Entity
+@Table(name = "expenses")
 public class Expense {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }

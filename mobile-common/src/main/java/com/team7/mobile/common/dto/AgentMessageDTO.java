@@ -7,3 +7,4 @@ package com.team7.mobile.common.dto;
  * 包含工具调用信息（toolCalls JSON）：Agent 调用了哪些外部工具
  */
 // TODO: 定义 Agent 对话消息，支持 toolCalls 字段记录 Agent 执行的操作
+

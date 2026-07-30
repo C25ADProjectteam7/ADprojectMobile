@@ -10,3 +10,4 @@ import java.time.LocalDateTime;
  * 示例：{type: "FLIGHT", title: "SQ123 新加坡→北京", startTime: "2026-08-01 08:00"}
  */
 // TODO: 定义行程单项的所有字段，包括类型、时间、地点、费用、预订号
+

@@ -14,5 +14,10 @@ import java.time.LocalDateTime;
 // TODO: 定义字段 — id, name, city, address, latitude, longitude
 // TODO: pricePerNight, currency, rating, amenities(JSON), description
 // TODO: source("AMADEUS"/"MOCK"), cachedAt
+@Entity
+@Table(name = "hotels")
 public class Hotel {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }

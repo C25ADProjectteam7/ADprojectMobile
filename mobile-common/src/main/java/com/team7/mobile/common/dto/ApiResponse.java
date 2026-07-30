@@ -9,3 +9,4 @@ package com.team7.mobile.common.dto;
  * 示例：ApiResponse<UserDTO> response = ApiResponse.success(userDTO);
  */
 // TODO: 定义 code, message, data 字段；提供 success() 和 error() 静态工厂方法
+

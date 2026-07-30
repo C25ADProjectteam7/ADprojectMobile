@@ -10,5 +10,5 @@ import org.springframework.stereotype.Repository;
  */
 // TODO: 定义自定义查询 — findByUsername(String), findByEmail(String), existsByUsername(String)
 @Repository
-public interface UserRepository {
+public interface UserRepository extends JpaRepository<com.team7.mobile.data.entity.User, Long> {
 }

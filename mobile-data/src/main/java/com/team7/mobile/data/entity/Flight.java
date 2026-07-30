@@ -14,5 +14,10 @@ import java.time.LocalDateTime;
 // TODO: 定义字段 — id, flightNumber, airline, departureAirport, arrivalAirport
 // TODO: departureTime, arrivalTime, price, currency, cabinClass, availableSeats
 // TODO: source("AMADEUS"/"MOCK"), cachedAt
+@Entity
+@Table(name = "flights")
 public class Flight {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }

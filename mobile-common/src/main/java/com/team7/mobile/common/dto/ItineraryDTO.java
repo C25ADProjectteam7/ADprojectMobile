@@ -7,3 +7,4 @@ package com.team7.mobile.common.dto;
  * totalEstimatedCost, generatedByAgent (是否由 AI 生成)
  */
 // TODO: 定义行程单传输对象，包含嵌套的行程项列表
+

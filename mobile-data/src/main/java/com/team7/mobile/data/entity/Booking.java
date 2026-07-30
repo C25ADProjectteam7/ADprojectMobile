@@ -14,5 +14,10 @@ import java.time.LocalDateTime;
  */
 // TODO: 定义字段 — id, trip(FK), user(FK), type, flight(FK nullable), hotel(FK nullable)
 // TODO: bookingRef(外部预订号), price, currency, status, bookedAt, createdAt
+@Entity
+@Table(name = "bookings")
 public class Booking {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }

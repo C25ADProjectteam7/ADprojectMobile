@@ -1,5 +1,6 @@
 package com.team7.mobile.data.repository;
 
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -9,5 +10,5 @@ import org.springframework.stereotype.Repository;
  */
 // TODO: 定义 — findByDepartureAndArrivalAndDate(), deleteByCachedAtBefore()
 @Repository
-public interface FlightRepository {
+public interface FlightRepository extends JpaRepository<com.team7.mobile.data.entity.Flight, Long> {
 }

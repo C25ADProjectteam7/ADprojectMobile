@@ -12,5 +12,10 @@ import java.time.LocalDateTime;
  */
 // TODO: 定义字段 — id, itinerary(FK), type, startTime, endTime, title, description, location
 // TODO: bookingRef(关联预订号), price, currency, status
+@Entity
+@Table(name = "itinerary_items")
 public class ItineraryItem {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }

@@ -7,3 +7,4 @@ package com.team7.mobile.common.dto;
  * 使用 @NotBlank 校验字段非空
  */
 // TODO: 定义 username, password 字段，添加 Jakarta Validation 注解
+

@@ -7,3 +7,4 @@ package com.team7.mobile.common.dto;
  * expiresIn (过期秒数), userId, username, role
  */
 // TODO: 定义 Token 相关字段，用于前端保存登录状态
+

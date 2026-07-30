@@ -13,5 +13,10 @@ import java.time.LocalDateTime;
  */
 // TODO: 定义字段 — id, user(FK), title, destination, startDate, endDate, budgetTotal, status, createdAt, updatedAt
 // TODO: 添加 @ManyToOne → User, @OneToMany → Itinerary/Booking/Expense
+@Entity
+@Table(name = "trips")
 public class Trip {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }

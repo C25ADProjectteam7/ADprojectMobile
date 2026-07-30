@@ -6,3 +6,4 @@ package com.team7.mobile.common.exception;
  * 由 JWT 过滤器检测到无效/过期 Token 时触发
  */
 // TODO: 继承 BusinessException，errorCode = "UNAUTHORIZED"
+

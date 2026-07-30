@@ -10,5 +10,5 @@ import org.springframework.stereotype.Repository;
  */
 // TODO: 定义自定义查询 — findByUserId(Long), findByStatusIn(List), findByStartDateBetween()
 @Repository
-public interface TripRepository {
+public interface TripRepository extends JpaRepository<com.team7.mobile.data.entity.Trip, Long> {
 }

@@ -13,5 +13,10 @@ import java.time.LocalDateTime;
  */
 // TODO: 定义字段 — id, user(FK), trip(FK nullable), role, content(TEXT)
 // TODO: toolCalls(JSON nullable), tokenCount, createdAt
+@Entity
+@Table(name = "agent_conversations")
 public class AgentConversation {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }

@@ -11,5 +11,10 @@ import java.time.LocalDate;
  */
 // TODO: 定义字段 — id, trip(FK), dayNumber, date, notes, generatedByAgent
 // TODO: 添加 @OneToMany → ItineraryItem
+@Entity
+@Table(name = "itineraries")
 public class Itinerary {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }

@@ -12,5 +12,10 @@ import java.time.LocalDateTime;
  * 图片统一存储在 /var/www/adproject-mobile/images/ 目录
  */
 // TODO: 定义字段 — id, placeType, placeId, imageUrl, localPath, downloadedAt
+@Entity
+@Table(name = "place_images")
 public class PlaceImage {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }

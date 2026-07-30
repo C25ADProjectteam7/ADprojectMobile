@@ -1,5 +1,6 @@
 package com.team7.mobile.data.repository;
 
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -8,5 +9,5 @@ import org.springframework.stereotype.Repository;
  */
 // TODO: 定义自定义查询 — findByTripId(Long), findByUserId(Long), findByStatus(Boolean)
 @Repository
-public interface BookingRepository {
+public interface BookingRepository extends JpaRepository<com.team7.mobile.data.entity.Booking, Long> {
 }

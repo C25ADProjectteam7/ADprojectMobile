@@ -7,3 +7,4 @@ package com.team7.mobile.common.dto;
  * 密码需满足复杂度要求（长度 >= 8，包含大小写字母和数字）
  */
 // TODO: 定义注册所需字段，添加 @Email, @Pattern 等校验注解
+

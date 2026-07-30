@@ -12,5 +12,10 @@ import java.time.LocalDateTime;
 // TODO: 定义字段 — id, name, city, address, latitude, longitude
 // TODO: category, rating, description, photos(JSON), openingHours, ticketPrice
 // TODO: source("GOOGLE_PLACES"), cachedAt
+@Entity
+@Table(name = "attractions")
 public class Attraction {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
 }
