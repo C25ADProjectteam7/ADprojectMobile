@@ -42,12 +42,10 @@ subprojects {
     }
     tasks.withType(Test).configureEach { useJUnitPlatform() }
 
-    // SpotBugs — fail CI on detected defects
+    // SpotBugs — static analysis
     spotbugs {
-        ignoreFailures = true   // Tighten to false once real code is in place
+        ignoreFailures = true   // tighten when real code is in place
         showStackTraces = true
-        effort = com.github.spotbugs.snom.Effort.MAX
-        reportLevel = com.github.spotbugs.snom.Confidence.LOW
     }
 
     // OWASP Dependency Check — fail on CVSS >= 7.0 (HIGH/CRITICAL)

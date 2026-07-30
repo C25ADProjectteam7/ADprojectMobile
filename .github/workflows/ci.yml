@@ -27,6 +27,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.12
       - run: gradle build -x test --no-daemon
       - uses: actions/upload-artifact@v4
         with:
@@ -47,6 +49,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.12
       - run: gradle test --no-daemon
       - uses: dorny/test-reporter@v1
         if: success() || failure()
@@ -69,6 +73,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.12
 
       # SpotBugs — Java static analysis
       - run: gradle spotbugsMain spotbugsTest --no-daemon
