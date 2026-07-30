@@ -1,0 +1,22 @@
+# ============================================================
+# CI Dockerfile — packages pre-built JAR (no Gradle needed)
+# Used by GitHub Actions; local dev uses Dockerfile (with wrapper)
+# ============================================================
+
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+
+RUN addgroup -g 1000 appgroup && \
+    adduser -u 1000 -G appgroup -D appuser && \
+    mkdir -p /var/www/adproject-mobile/images && \
+    chown -R appuser:appgroup /var/www/adproject-mobile
+
+COPY mobile-api/build/libs/adproject-mobile-api.jar app.jar
+
+USER appuser
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD wget -qO- http://localhost:8080/actuator/health || exit 1
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
