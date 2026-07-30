@@ -6,7 +6,7 @@ plugins {
     id 'org.springframework.boot' version "${springBootVersion}" apply false
     id 'io.spring.dependency-management' version '1.1.6' apply false
     id 'com.github.spotbugs' version '6.0.19' apply false          // SAST: static analysis
-    id 'org.owasp.dependencycheck' version '10.0.3' apply false     // SAST: CVE scanning
+    id 'org.owasp.dependencycheck' version '12.1.0' apply false     // SAST: CVE scanning
 }
 
 allprojects {
@@ -39,10 +39,16 @@ subprojects {
         showStackTraces = true
     }
 
-    // OWASP Dependency Check — fail on CVSS >= 7.0 (HIGH/CRITICAL)
+    // OWASP Dependency Check — CVE scan for third-party libs
     dependencyCheck {
         failBuildOnCVSS = 7.0
         formats = ['HTML', 'JSON']
+        // Skip analyzers that need credentials or are JS-specific
+        analyzers {
+            ossIndex { enabled = false }
+            nodeAudit { enabled = false }
+            retirejs { enabled = false }
+        }
         nvd {
             apiKey = System.getenv('NVD_API_KEY') ?: ''
         }
