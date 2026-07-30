@@ -10,8 +10,18 @@ repositories { mavenCentral() }
 dependencies {
     implementation project(':mobile-common')
     implementation project(':mobile-data')
+
+    // Lombok
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    // Spring Security
     implementation 'org.springframework.boot:spring-boot-starter-security'
+    // JWT
     implementation "io.jsonwebtoken:jjwt-api:${jjwtVersion}"
     runtimeOnly "io.jsonwebtoken:jjwt-impl:${jjwtVersion}"
     runtimeOnly "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
+    // Test
+    testImplementation "org.junit.jupiter:junit-jupiter:${junitVersion}"
+    testImplementation "org.mockito:mockito-core:${mockitoVersion}"
 }

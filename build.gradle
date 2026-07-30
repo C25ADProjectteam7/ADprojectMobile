@@ -25,16 +25,7 @@ subprojects {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // Shared dependencies — all submodules inherit these automatically
-    dependencies {
-        compileOnly "org.projectlombok:lombok:${lombokVersion}"
-        annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
-        implementation "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
-        implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${jacksonVersion}"
-        testImplementation "org.junit.jupiter:junit-jupiter:${junitVersion}"
-        testImplementation "org.mockito:mockito-core:${mockitoVersion}"
-        testImplementation "org.mockito:mockito-junit-jupiter:${mockitoVersion}"
-    }
+    // Dependencies are declared in each module's build.gradle
 
     tasks.withType(JavaCompile).configureEach {
         options.encoding = 'UTF-8'

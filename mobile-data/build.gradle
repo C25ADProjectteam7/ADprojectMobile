@@ -9,6 +9,15 @@ repositories { mavenCentral() }
 
 dependencies {
     implementation project(':mobile-common')
+
+    // Lombok
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    // Spring Data JPA
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    // MySQL
     runtimeOnly "com.mysql:mysql-connector-j:${mysqlConnectorVersion}"
+    // Test
+    testImplementation "org.junit.jupiter:junit-jupiter:${junitVersion}"
 }

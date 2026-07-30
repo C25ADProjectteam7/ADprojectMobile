@@ -11,7 +11,16 @@ dependencies {
     implementation project(':mobile-common')
     implementation project(':mobile-data')
     implementation project(':mobile-security')
+
+    // Lombok
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    // Spring Web + Retry
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.retry:spring-retry'
     implementation 'org.springframework:spring-aspects'
+    // Test
+    testImplementation "org.junit.jupiter:junit-jupiter:${junitVersion}"
+    testImplementation "org.mockito:mockito-core:${mockitoVersion}"
 }

@@ -13,10 +13,22 @@ dependencies {
     implementation project(':mobile-security')
     implementation project(':mobile-data')
     implementation project(':mobile-business')
+
+    // Lombok
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // OpenAPI docs
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocOpenApiVersion}"
+    // DevTools (auto-disabled in prod)
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    // Test
+    testImplementation "org.junit.jupiter:junit-jupiter:${junitVersion}"
+    testImplementation "org.mockito:mockito-core:${mockitoVersion}"
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
 bootJar {
