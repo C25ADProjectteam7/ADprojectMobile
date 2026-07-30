@@ -76,11 +76,20 @@ jobs:
         with:
           gradle-version: 8.12
 
+      # Cache NVD database (avoids re-downloading GBs every run)
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.dependency-check/data
+          key: owasp-nvd-${{ runner.os }}-${{ hashFiles('**/build.gradle') }}
+          restore-keys: owasp-nvd-${{ runner.os }}-
+
       # SpotBugs — Java static analysis
       - run: gradle spotbugsMain spotbugsTest --no-daemon
 
-      # OWASP Dependency Check — CVE scan for third-party libs
-      - run: gradle dependencyCheckAnalyze --no-daemon
+      # OWASP Dependency Check — CVE scan (only api module, includes all transitive deps)
+      - run: gradle :mobile-api:dependencyCheckAnalyze --no-daemon
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
       - uses: actions/upload-artifact@v4

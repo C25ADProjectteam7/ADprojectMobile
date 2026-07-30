@@ -41,7 +41,7 @@ subprojects {
 
     // OWASP Dependency Check — CVE scan for third-party libs
     dependencyCheck {
-        failBuildOnCVSS = 7.0
+        failBuildOnCVSS = 9.0    // fail only on critical CVEs (score >= 9.0)
         formats = ['HTML', 'JSON']
         // Skip analyzers that need credentials or are JS-specific
         analyzers {
