@@ -43,5 +43,8 @@ subprojects {
     dependencyCheck {
         failBuildOnCVSS = 7.0
         formats = ['HTML', 'JSON']
+        nvd {
+            apiKey = System.getenv('NVD_API_KEY') ?: ''
+        }
     }
 }
