@@ -33,7 +33,7 @@ services:
   spring-api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.ci
     container_name: mobile-spring-api
     restart: unless-stopped
     depends_on:
