@@ -86,7 +86,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.dependency-check/data
-          key: owasp-nvd-${{ runner.os }}-${{ hashFiles('**/build.gradle') }}
+          key: owasp-nvd-${{ runner.os }}-v1
           restore-keys: owasp-nvd-${{ runner.os }}-
 
       # SpotBugs — Java static analysis
