@@ -76,19 +76,15 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+      # Cache OWASP NVD database (skip the GB download after first run)
+      - uses: actions/cache@v4
+        with:
+          path: ~/.dependency-check/data
+          key: owasp-dc-data-${{ runner.os }}-v1
+
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.12
-
-      # Cache NVD database (avoids re-downloading GBs every run)
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle
-            ~/.dependency-check
-            ~/.cache/trivy
-          key: owasp-nvd-${{ runner.os }}-v1
-          restore-keys: owasp-nvd-${{ runner.os }}-
 
       # SpotBugs — Java static analysis
       - run: gradle spotbugsMain spotbugsTest --no-daemon
