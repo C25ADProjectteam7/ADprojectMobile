@@ -19,7 +19,7 @@ services:
       - mysql-data:/var/lib/mysql                        # persist data
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "127.0.0.1:3306:3306"                             # localhost only
+      - "127.0.0.1:3307:3306"                             # host:3306→OS, container:3306
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost",
              "-u", "mobile_user", "-p${MYSQL_PASSWORD:-Mobile@2026!}"]
