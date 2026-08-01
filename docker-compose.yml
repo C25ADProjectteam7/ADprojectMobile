@@ -31,9 +31,8 @@ services:
 
   # ---- Spring Boot API ----
   spring-api:
-    build:
-      context: .
-      dockerfile: Dockerfile.ci
+    image: wushi233/adproject-mobile-api:latest
+    pull_policy: always
     container_name: mobile-spring-api
     restart: unless-stopped
     depends_on:
