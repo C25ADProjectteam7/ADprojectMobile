@@ -14,8 +14,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * scanBasePackages 覆盖所有子模块的包路径，确保每个模块的 Bean 都被扫描到
  * 启动命令：java -jar adproject-mobile-api.jar 或 ./gradlew :mobile-api:bootRun
  */
-// TODO: 配置 scanBasePackages = "com.team7.mobile"，启用所有子模块的自动装配
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = "com.team7.mobile")
 public class MobileApplication {
     public static void main(String[] args) {
         SpringApplication.run(MobileApplication.class, args);
