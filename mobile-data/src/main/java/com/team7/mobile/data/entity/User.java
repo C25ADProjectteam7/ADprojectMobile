@@ -10,6 +10,9 @@ import java.time.LocalDateTime;
  * role 字段控制 RBAC 权限（EMPLOYEE/MANAGER/FINANCE/ADMIN）
  */
 // TODO: 定义字段 — id, username, password(BCrypt), email, department, phone, role, avatarUrl, createdAt, updatedAt
-// TODO: 添加 @Entity, @Table(name="users") 注解
+@Entity
+@Table(name = "users")
 public class User {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 }
