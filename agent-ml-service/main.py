@@ -8,11 +8,11 @@ Provides two capabilities to the Spring Boot backend:
 2. ML inference: price prediction + intelligent budget allocation
 
 API endpoints:
-- POST /api/agent/generate-itinerary  → generate full itinerary
-- POST /api/agent/chat                → conversational trip modification
-- POST /api/ml/predict-price          → price trend prediction
-- POST /api/ml/allocate-budget        → budget allocation
-- GET  /health                        → health check
+- GET  /health                        → health check                           [implemented]
+- POST /api/ml/predict-hotel-price    → hotel price prediction (mock)          [implemented]
+- POST /api/agent/generate-itinerary  → generate full itinerary                [planned — not yet implemented or routed]
+- POST /api/agent/chat                → conversational trip modification       [planned — not yet implemented or routed]
+- POST /api/ml/allocate-budget        → budget allocation                     [planned — not yet implemented or routed]
 """
 
 from fastapi import FastAPI
@@ -28,8 +28,10 @@ async def health_check():
     """Health check — used by Spring Boot and Docker Compose healthcheck"""
     return {"status": "healthy", "service": "agent-ml-service"}
 
+from ml.routes import router as ml_router
+app.include_router(ml_router)
+
 # TODO: register agent routes (from agent.routes import router as agent_router)
-# TODO: register ml routes (from ml.routes import router as ml_router)
 
 if __name__ == "__main__":
     import uvicorn

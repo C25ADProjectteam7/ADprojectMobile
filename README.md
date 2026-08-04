@@ -90,6 +90,79 @@ docker compose ps
 | POST /api/expenses | 提交报销 | 需认证 |
 | POST /api/expenses/upload-receipt | 上传发票 OCR | 需认证 |
 
+## Machine Learning — Hotel Price Prediction
+
+**当前状态：Mock 实现，非真实 ML 预测。** 详见 [API Contract](docs/ml/hotel-price-api-contract.md) 和 [Dataset Requirements](docs/ml/hotel-price-dataset-requirements.md)。
+
+`agent-ml-service/ml/` 提供一个确定性的规则式（rule-based）Mock predictor：城市基价 × 星级倍数 × 房型倍数。响应中 `is_mock=true`、`model_status="mock"` 明确标注，不得当作真实模型预测结果展示给用户。目前尚未选定/下载/验证正式训练数据集。
+
+**当前 mock 阶段仅支持 `currency=USD`**（大小写不敏感，会被归一化为大写；其他 currency 返回 422）——因为城市基价是 USD 数值，没有做汇率转换，直接 echo 其他 currency 会误导调用方。
+
+### 安装依赖
+
+```bash
+cd agent-ml-service
+pip install -r requirements.txt
+```
+
+### 启动 FastAPI
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Health-check
+
+```bash
+curl http://localhost:8000/health
+# {"status": "healthy", "service": "agent-ml-service"}
+```
+
+### Hotel Price Prediction 端点
+
+```bash
+curl -X POST http://localhost:8000/api/ml/predict-hotel-price \
+  -H "Content-Type: application/json" \
+  -d '{
+    "city": "Tokyo",
+    "check_in_date": "2026-08-10",
+    "check_out_date": "2026-08-13",
+    "booking_date": "2026-07-31",
+    "hotel_star_rating": 4,
+    "room_type": "double",
+    "number_of_guests": 2,
+    "currency": "USD"
+  }'
+```
+
+响应示例：
+
+```json
+{
+  "predicted_price_per_night": 224.0,
+  "predicted_total_price": 672.0,
+  "number_of_nights": 3,
+  "currency": "USD",
+  "model_status": "mock",
+  "model_version": "mock-v0",
+  "is_mock": true,
+  "message": "MOCK prediction only — based on fixed lookup tables, not a trained model. Do not use this result for real booking decisions."
+}
+```
+
+### 运行测试
+
+```bash
+cd agent-ml-service
+pytest tests/ -v
+```
+
+当前结果：**21 个测试全部通过**（健康检查、正常请求、mock 标记、精确公式数值、输入校验 422、currency/city 边界情况、结果确定性、OpenAPI schema 存在性）。验证环境为本机现有 `.venv`，尚未在 `requirements.txt` 锁定版本或 Docker 目标环境下验证。
+
+### 未来真实模型替换
+
+当训练数据和模型就绪后，实现 `RealHotelPricePredictor`（与 `MockHotelPricePredictor` 相同的 `predict()` 接口），并在 `ml/routes.py` 中替换引用即可——API 请求/响应结构无需变动。
+
 ## CI/CD Pipeline
 
 6 阶段流水线（Sprint 2 起部署阶段启用）：
