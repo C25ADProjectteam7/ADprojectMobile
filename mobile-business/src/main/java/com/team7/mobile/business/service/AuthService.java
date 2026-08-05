@@ -1,21 +1,65 @@
 package com.team7.mobile.business.service;
 
+import com.team7.mobile.common.dto.LoginRequest;
+import com.team7.mobile.common.dto.LoginResponse;
+import com.team7.mobile.common.dto.RegisterRequest;
+import com.team7.mobile.data.entity.User;
+import com.team7.mobile.data.repository.UserRepository;
+import com.team7.mobile.security.jwt.JwtTokenProvider;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-/**
- * 认证服务 — 处理用户登录、注册、密码重置等认证相关业务
- * <p>
- * 登录流程：
- * 1. 接收 LoginRequest → 通过 AuthenticationManager 验证用户名密码
- * 2. 验证通过 → 调用 JwtTokenProvider 生成 JWT Token
- * 3. 返回 LoginResponse（包含 accessToken + 用户基本信息）
- * <p>
- * 注册流程：
- * 1. 校验用户名/邮箱是否已存在
- * 2. BCrypt 加密密码 → 保存 User 到数据库
- * 3. 返回注册成功信息
- */
-// TODO: 实现 login(), register(), refreshToken(), changePassword()
 @Service
 public class AuthService {
+
+    private final AuthenticationManager authenticationManager;
+    private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    public AuthService(AuthenticationManager authenticationManager,
+                       JwtTokenProvider jwtTokenProvider,
+                       UserRepository userRepository,
+                       PasswordEncoder passwordEncoder) {
+        this.authenticationManager = authenticationManager;
+        this.jwtTokenProvider = jwtTokenProvider;
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    /**
+     * Authenticate user and return JWT token.
+     */
+    public LoginResponse login(LoginRequest request) {
+        Authentication auth = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
+        );
+        String role = auth.getAuthorities().stream()
+                .findFirst()
+                .map(Object::toString)
+                .orElse("ROLE_EMPLOYEE");
+        String token = jwtTokenProvider.generateToken(request.getUsername(), role);
+        User user = userRepository.findByUsername(request.getUsername()).orElseThrow();
+        return new LoginResponse(token, "Bearer", 86400000L,
+                user.getId(), user.getUsername(), role);
+    }
+
+    /**
+     * Register a new employee account.
+     */
+    public void register(RegisterRequest request) {
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw new RuntimeException("Username already exists");
+        }
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setEmail(request.getEmail());
+        user.setDepartment(request.getDepartment());
+        user.setPhone(request.getPhone());
+        userRepository.save(user);
+    }
 }
