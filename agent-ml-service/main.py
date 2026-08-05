@@ -16,6 +16,7 @@ API endpoints:
 """
 
 from fastapi import FastAPI
+from agent.routes import router as agent_router
 
 app = FastAPI(
     title="Team7 Agent & ML Service",
@@ -28,7 +29,8 @@ async def health_check():
     """Health check — used by Spring Boot and Docker Compose healthcheck"""
     return {"status": "healthy", "service": "agent-ml-service"}
 
-# TODO: register agent routes (from agent.routes import router as agent_router)
+app.include_router(agent_router)
+
 # TODO: register ml routes (from ml.routes import router as ml_router)
 
 if __name__ == "__main__":
