@@ -1,21 +1,62 @@
 package com.team7.mobile.api.controller;
 
+import com.team7.mobile.business.agent.AgentOrchestrator;
+import com.team7.mobile.business.service.AgentChatService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * Agent 对话 API 控制器 — 用户与行程管家 Agent 的交互入口
- * <p>
- * 接口：
- * - POST /api/agent/chat          — 向 Agent 发送消息（文本或结构化指令）
- *   请求：{ "message": "把我新加坡的航班改到下午", "tripId": 123 }
- *   响应：{ "reply": "好的，我来帮你查询下午的航班...", "actions": [...] }
- * - GET  /api/agent/conversations/{tripId} — 获取与 Agent 的对话历史
- * <p>
- * Agent 处理流程：
- * 用户消息 → AgentOrchestrator → Python Agent (DeepSeek LLM) → 回复 + 工具调用
- */
-// TODO: 定义 Agent 对话接口，支持流式返回（SSE）可选
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/agent")
 public class AgentController {
+
+    private final AgentOrchestrator agentOrchestrator;
+    private final AgentChatService agentChatService;
+
+    public AgentController(AgentOrchestrator agentOrchestrator, AgentChatService agentChatService) {
+        this.agentOrchestrator = agentOrchestrator;
+        this.agentChatService = agentChatService;
+    }
+
+    /**
+     * Poll the result of an async agent task (started via POST /api/trips/{id}/agent-chat).
+     * Returns: { status: PROCESSING } while running,
+     *          { status: DONE, result: {...} } when finished,
+     *          { status: FAILED, error: "..." } on failure.
+     */
+    @GetMapping("/tasks/{taskId}")
+    public ResponseEntity<Map<String, Object>> getTask(@PathVariable String taskId) {
+        return ResponseEntity.ok(agentChatService.getTask(taskId));
+    }
+
+    /**
+     * Backlog #4: Parse free-text trip requirements.
+     * Frontend sends raw user input → Agent returns structured fields or clarifying questions.
+     */
+    @PostMapping("/extract-requirements")
+    public ResponseEntity<Map<String, Object>> extractRequirements(@RequestBody Map<String, String> request) {
+        String userInput = request.get("userInput");
+        return ResponseEntity.ok(agentOrchestrator.extractRequirements(userInput));
+    }
+
+    /**
+     * Backlog #6: Generate full day-by-day itinerary.
+     * Frontend sends structured trip data (origin, destination, dates, budget, preferences).
+     */
+    @PostMapping("/generate-itinerary")
+    public ResponseEntity<Map<String, Object>> generateItinerary(@RequestBody Map<String, Object> tripData) {
+        return ResponseEntity.ok(agentOrchestrator.generateItinerary(tripData));
+    }
+
+    /**
+     * Backlog #10: Modify existing itinerary via conversation.
+     */
+    @PostMapping("/modify-itinerary")
+    public ResponseEntity<Map<String, Object>> modifyItinerary(@RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> currentItinerary = (Map<String, Object>) request.get("currentItinerary");
+        String userRequest = (String) request.get("userRequest");
+        return ResponseEntity.ok(agentOrchestrator.modifyItinerary(currentItinerary, userRequest));
+    }
 }

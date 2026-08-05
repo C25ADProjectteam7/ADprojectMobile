@@ -1,9 +1,15 @@
 package com.team7.mobile.common.exception;
 
 /**
- * 资源未找到异常 — 查询的数据不存在时抛出（HTTP 404）
- * <p>
- * 示例：查询 tripId=999 的行程，但数据库中无此记录
+ * Thrown when a requested resource does not exist (HTTP 404).
  */
-// TODO: 继承 BusinessException，默认 errorCode = "NOT_FOUND"
+public class ResourceNotFoundException extends BusinessException {
 
+    public ResourceNotFoundException(String message) {
+        super("NOT_FOUND", message, 404);
+    }
+
+    public ResourceNotFoundException(String resource, Object id) {
+        super("NOT_FOUND", resource + " not found: " + id, 404);
+    }
+}

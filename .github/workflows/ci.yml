@@ -8,6 +8,7 @@ name: CI/CD Pipeline
 permissions:
   contents: read
   security-events: write
+  actions: write   # required for cache save (otherwise cache is read-only)
 
 on:
   push:

@@ -1,10 +1,24 @@
 package com.team7.mobile.common.exception;
 
 /**
- * 业务异常基类 — 所有自定义业务异常继承此类
- * <p>
- * 携带 errorCode (业务错误码，如 "TRIP_NOT_FOUND") 和 message (用户可读的错误描述)
- * Spring 全局异常处理器根据异常类型返回对应的 HTTP 状态码
+ * Base business exception — carries an error code and a user-readable message.
+ * Mapped to HTTP responses by GlobalExceptionHandler.
  */
-// TODO: 定义 errorCode + message，子类扩展具体异常类型
+public class BusinessException extends RuntimeException {
 
+    private final String errorCode;
+    private final int httpStatus;
+
+    public BusinessException(String errorCode, String message) {
+        this(errorCode, message, 400);
+    }
+
+    public BusinessException(String errorCode, String message, int httpStatus) {
+        super(message);
+        this.errorCode = errorCode;
+        this.httpStatus = httpStatus;
+    }
+
+    public String getErrorCode() { return errorCode; }
+    public int getHttpStatus() { return httpStatus; }
+}
