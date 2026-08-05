@@ -31,7 +31,7 @@ services:
 
   # ---- Spring Boot API ----
   spring-api:
-    image: wushi233/adproject-mobile-api:latest
+    image: ${DOCKERHUB_USERNAME:-wushi233}/adproject-mobile-api:latest
     pull_policy: always
     container_name: mobile-spring-api
     restart: unless-stopped

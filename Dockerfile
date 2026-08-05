@@ -14,7 +14,7 @@ COPY mobile-security/build.gradle ./mobile-security/
 COPY mobile-data/build.gradle ./mobile-data/
 COPY mobile-business/build.gradle ./mobile-business/
 COPY mobile-api/build.gradle ./mobile-api/
-RUN ./gradlew dependencies --no-daemon || return 0
+RUN ./gradlew dependencies --no-daemon || true
 
 # Copy source and build
 COPY . .
