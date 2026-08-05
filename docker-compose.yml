@@ -19,7 +19,7 @@ services:
       - mysql-data:/var/lib/mysql                        # persist data
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "127.0.0.1:3306:3306"                             # localhost only
+      - "127.0.0.1:3307:3306"                             # host:3306→OS, container:3306
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost",
              "-u", "mobile_user", "-p${MYSQL_PASSWORD:-Mobile@2026!}"]
@@ -31,9 +31,8 @@ services:
 
   # ---- Spring Boot API ----
   spring-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: wushi233/adproject-mobile-api:latest
+    pull_policy: always
     container_name: mobile-spring-api
     restart: unless-stopped
     depends_on:

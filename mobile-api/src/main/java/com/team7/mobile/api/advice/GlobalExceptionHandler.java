@@ -1,24 +1,71 @@
 package com.team7.mobile.api.advice;
 
+import com.team7.mobile.common.dto.ApiResponse;
+import com.team7.mobile.common.exception.BusinessException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.stream.Collectors;
+
 /**
- * 全局异常处理器 — 统一处理所有 Controller 抛出的异常
- * <p>
- * 实现 @RestControllerAdvice + @ExceptionHandler，将异常转换为统一的 ApiResponse 格式
- * <p>
- * 异常映射：
- * - ResourceNotFoundException → 404 + ApiResponse.error(404, "资源不存在")
- * - UnauthorizedException → 401 + ApiResponse.error(401, "未授权")
- * - ForbiddenException → 403 + ApiResponse.error(403, "禁止访问")
- * - MethodArgumentNotValidException → 400 + ApiResponse.error(400, "参数校验失败")
- * - ExternalApiException → 502 + ApiResponse.error(502, "外部服务异常")
- * - Throwable → 500 + ApiResponse.error(500, "服务器内部错误，请稍后重试")
- * <p>
- * 注意：500 错误不应泄露内部异常细节（包含堆栈信息）到前端响应
- * 生产环境中使用日志框架记录完整错误，只返回用户友好的错误描述
+ * Global exception handler — converts exceptions into the unified ApiResponse shape.
  */
-// TODO: 定义所有 @ExceptionHandler，统一返回 ApiResponse，区分开发/生产环境的错误详情
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /** Business exceptions carry their own error code + HTTP status. */
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e) {
+        return ResponseEntity.status(e.getHttpStatus())
+                .body(ApiResponse.error(e.getHttpStatus(), e.getMessage()));
+    }
+
+    /** Bean validation failures (@Valid) → 400 with field details. */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
+        String details = e.getBindingResult().getFieldErrors().stream()
+                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(400, "Validation failed — " + details));
+    }
+
+    /** Wrong username/password → 401. */
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBadCredentials(BadCredentialsException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error(401, "Invalid username or password"));
+    }
+
+    /** Role not permitted → 403. */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error(403, "Access denied"));
+    }
+
+    /** Illegal arguments (e.g. bad enum value, date range) → 400. */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(400, e.getMessage()));
+    }
+
+    /** Fallback — never leak stack traces to clients; log them instead. */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception e) {
+        log.error("Unhandled exception", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(500, "Internal server error"));
+    }
 }

@@ -4,10 +4,46 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 行程单项 DTO — 行程中的一条具体安排
- * <p>
- * type 枚举：FLIGHT / HOTEL / RESTAURANT / ATTRACTION / MEETING / TRANSPORT
- * 示例：{type: "FLIGHT", title: "SQ123 新加坡→北京", startTime: "2026-08-01 08:00"}
+ * Itinerary item DTO — one activity in a day (flight, hotel stay, meal, attraction...).
  */
-// TODO: 定义行程单项的所有字段，包括类型、时间、地点、费用、预订号
+public class ItineraryItemDTO {
 
+    private Long id;
+    private String type;          // FLIGHT / HOTEL / MEAL / ATTRACTION / TRANSPORT / MEETING
+    private LocalDateTime startTime;
+    private LocalDateTime endTime;
+    private String title;
+    private String description;   // raw JSON from the Agent when fields are not fully mapped
+    private String location;
+    private String bookingRef;
+    private BigDecimal price;
+    private String currency;
+
+    public ItineraryItemDTO() {}
+
+    public ItineraryItemDTO(Long id, String type, LocalDateTime startTime, LocalDateTime endTime,
+                            String title, String description, String location,
+                            String bookingRef, BigDecimal price, String currency) {
+        this.id = id;
+        this.type = type;
+        this.startTime = startTime;
+        this.endTime = endTime;
+        this.title = title;
+        this.description = description;
+        this.location = location;
+        this.bookingRef = bookingRef;
+        this.price = price;
+        this.currency = currency;
+    }
+
+    public Long getId() { return id; }
+    public String getType() { return type; }
+    public LocalDateTime getStartTime() { return startTime; }
+    public LocalDateTime getEndTime() { return endTime; }
+    public String getTitle() { return title; }
+    public String getDescription() { return description; }
+    public String getLocation() { return location; }
+    public String getBookingRef() { return bookingRef; }
+    public BigDecimal getPrice() { return price; }
+    public String getCurrency() { return currency; }
+}

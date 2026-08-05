@@ -1,13 +1,17 @@
 package com.team7.mobile.data.repository;
 
+import com.team7.mobile.data.entity.Expense;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import java.util.List;
+import java.util.Optional;
 
-/**
- * 费用/报销数据访问接口
- * 提供按用户、行程、状态、费用类别查询的方法
- */
-// TODO: 定义自定义查询 — findByTripIdAndUserId, findByStatus, findByCategory
 @Repository
-public interface ExpenseRepository extends JpaRepository<com.team7.mobile.data.entity.Expense, Long> {
+public interface ExpenseRepository extends JpaRepository<Expense, Long> {
+
+    List<Expense> findByUserId(Long userId);
+
+    List<Expense> findByTripId(Long tripId);
+
+    Optional<Expense> findByIdAndUserId(Long id, Long userId);
 }
