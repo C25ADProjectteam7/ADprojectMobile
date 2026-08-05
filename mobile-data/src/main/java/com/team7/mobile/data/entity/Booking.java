@@ -54,11 +54,31 @@ public class Booking {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    enum BookingType {
+    public Long getId() { return id; }
+    public Trip getTrip() { return trip; }
+    public void setTrip(Trip trip) { this.trip = trip; }
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
+    public BookingType getType() { return type; }
+    public void setType(BookingType type) { this.type = type; }
+    public Flight getFlight() { return flight; }
+    public void setFlight(Flight flight) { this.flight = flight; }
+    public Hotel getHotel() { return hotel; }
+    public void setHotel(Hotel hotel) { this.hotel = hotel; }
+    public String getBookingRef() { return bookingRef; }
+    public void setBookingRef(String bookingRef) { this.bookingRef = bookingRef; }
+    public BigDecimal getPrice() { return price; }
+    public void setPrice(BigDecimal price) { this.price = price; }
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
+    public BookingStatus getStatus() { return status; }
+    public void setStatus(BookingStatus status) { this.status = status; }
+
+    public enum BookingType {
         FLIGHT, HOTEL
     }
 
-    enum BookingStatus {
+    public enum BookingStatus {
         PENDING, CONFIRMED, CHECKED_IN, COMPLETED, CANCELLED, FAILED
     }
 

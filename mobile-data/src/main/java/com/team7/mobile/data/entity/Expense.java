@@ -51,11 +51,31 @@ public class Expense {
     @Column(columnDefinition = "TEXT")
     private String reviewNote;
 
-    enum ExpenseCategory {
+    public Long getId() { return id; }
+    public Trip getTrip() { return trip; }
+    public void setTrip(Trip trip) { this.trip = trip; }
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
+    public ExpenseCategory getCategory() { return category; }
+    public void setCategory(ExpenseCategory category) { this.category = category; }
+    public BigDecimal getAmount() { return amount; }
+    public void setAmount(BigDecimal amount) { this.amount = amount; }
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public String getReceiptUrl() { return receiptUrl; }
+    public void setReceiptUrl(String receiptUrl) { this.receiptUrl = receiptUrl; }
+    public ExpenseStatus getStatus() { return status; }
+    public void setStatus(ExpenseStatus status) { this.status = status; }
+    public LocalDateTime getSubmittedAt() { return submittedAt; }
+    public void setSubmittedAt(LocalDateTime submittedAt) { this.submittedAt = submittedAt; }
+
+    public enum ExpenseCategory {
         FLIGHT, HOTEL, MEAL, TRANSPORT, OTHER
     }
 
-    enum ExpenseStatus {
+    public enum ExpenseStatus {
         SUBMITTED, APPROVED, REJECTED
     }
 

@@ -46,7 +46,23 @@ public class Trip {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    enum TripStatus {
+    public Long getId() { return id; }
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+    public String getDestination() { return destination; }
+    public void setDestination(String destination) { this.destination = destination; }
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
+    public LocalDate getEndDate() { return endDate; }
+    public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
+    public BigDecimal getBudgetTotal() { return budgetTotal; }
+    public void setBudgetTotal(BigDecimal budgetTotal) { this.budgetTotal = budgetTotal; }
+    public TripStatus getStatus() { return status; }
+    public void setStatus(TripStatus status) { this.status = status; }
+
+    public enum TripStatus {
         DRAFT, PLANNED, APPROVED, IN_PROGRESS, COMPLETED, CANCELLED
     }
 
