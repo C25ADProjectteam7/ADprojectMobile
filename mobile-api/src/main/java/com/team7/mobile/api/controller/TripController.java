@@ -1,7 +1,9 @@
 package com.team7.mobile.api.controller;
 
 import com.team7.mobile.common.dto.TripDTO;
+import com.team7.mobile.common.dto.TripDetailDTO;
 import com.team7.mobile.common.dto.TripRequest;
+import com.team7.mobile.business.service.AgentChatService;
 import com.team7.mobile.business.service.TripService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -15,9 +17,11 @@ import java.util.Map;
 public class TripController {
 
     private final TripService tripService;
+    private final AgentChatService agentChatService;
 
-    public TripController(TripService tripService) {
+    public TripController(TripService tripService, AgentChatService agentChatService) {
         this.tripService = tripService;
+        this.agentChatService = agentChatService;
     }
 
     /** Create a new trip */
@@ -32,10 +36,16 @@ public class TripController {
         return ResponseEntity.ok(tripService.getUserTrips());
     }
 
-    /** Get trip detail */
+    /** Get trip basic info */
     @GetMapping("/{id}")
     public ResponseEntity<TripDTO> getTrip(@PathVariable Long id) {
         return ResponseEntity.ok(tripService.getTripById(id));
+    }
+
+    /** Get trip detail incl. full day-by-day itinerary */
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<TripDetailDTO> getTripDetail(@PathVariable Long id) {
+        return ResponseEntity.ok(tripService.getTripDetail(id));
     }
 
     /** Update trip */
@@ -53,14 +63,19 @@ public class TripController {
     }
 
     /**
-     * Chat with the Agent to plan/modify this trip.
+     * Chat with the Agent to plan/modify this trip — async.
      * Body: { "message": "I want to go to Singapore for 3 days, budget 2000" }
-     * Returns NEEDS_MORE_INFO (with clarifyingQuestion) or ITINERARY_READY (with itinerary).
+     * Returns immediately: { "taskId": "...", "status": "PROCESSING" }
+     * Poll GET /api/agent/tasks/{taskId} for the result.
      */
     @PostMapping("/{id}/agent-chat")
     public ResponseEntity<Map<String, Object>> agentChat(@PathVariable Long id,
                                                          @RequestBody Map<String, String> body) {
         String message = body.get("message");
-        return ResponseEntity.ok(tripService.agentChat(id, message));
+        String taskId = agentChatService.startTask(id, message);
+        return ResponseEntity.accepted().body(Map.of(
+                "taskId", taskId,
+                "status", "PROCESSING"
+        ));
     }
 }

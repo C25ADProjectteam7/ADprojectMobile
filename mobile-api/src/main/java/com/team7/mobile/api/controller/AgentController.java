@@ -1,6 +1,7 @@
 package com.team7.mobile.api.controller;
 
 import com.team7.mobile.business.agent.AgentOrchestrator;
+import com.team7.mobile.business.service.AgentChatService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,9 +12,22 @@ import java.util.Map;
 public class AgentController {
 
     private final AgentOrchestrator agentOrchestrator;
+    private final AgentChatService agentChatService;
 
-    public AgentController(AgentOrchestrator agentOrchestrator) {
+    public AgentController(AgentOrchestrator agentOrchestrator, AgentChatService agentChatService) {
         this.agentOrchestrator = agentOrchestrator;
+        this.agentChatService = agentChatService;
+    }
+
+    /**
+     * Poll the result of an async agent task (started via POST /api/trips/{id}/agent-chat).
+     * Returns: { status: PROCESSING } while running,
+     *          { status: DONE, result: {...} } when finished,
+     *          { status: FAILED, error: "..." } on failure.
+     */
+    @GetMapping("/tasks/{taskId}")
+    public ResponseEntity<Map<String, Object>> getTask(@PathVariable String taskId) {
+        return ResponseEntity.ok(agentChatService.getTask(taskId));
     }
 
     /**

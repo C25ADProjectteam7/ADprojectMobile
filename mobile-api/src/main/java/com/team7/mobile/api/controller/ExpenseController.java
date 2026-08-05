@@ -1,21 +1,48 @@
 package com.team7.mobile.api.controller;
 
+import com.team7.mobile.common.dto.ApiResponse;
 import com.team7.mobile.common.dto.ExpenseDTO;
 import com.team7.mobile.business.service.ExpenseService;
+import com.team7.mobile.business.service.FileStorageService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/expenses")
 public class ExpenseController {
 
     private final ExpenseService expenseService;
+    private final FileStorageService fileStorageService;
 
-    public ExpenseController(ExpenseService expenseService) {
+    public ExpenseController(ExpenseService expenseService, FileStorageService fileStorageService) {
         this.expenseService = expenseService;
+        this.fileStorageService = fileStorageService;
+    }
+
+    /**
+     * Upload a receipt image (multipart form-data) and create an expense record.
+     * Fields: file (required), tripId, category, amount, currency, description.
+     * The image is stored on the server; receiptUrl points to it so the web admin
+     * can view it via GET /uploads/**.
+     */
+    @PostMapping("/upload-receipt")
+    public ResponseEntity<ApiResponse<ExpenseDTO>> uploadReceipt(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("tripId") Long tripId,
+            @RequestParam("category") String category,
+            @RequestParam("amount") BigDecimal amount,
+            @RequestParam(value = "currency", required = false) String currency,
+            @RequestParam(value = "description", required = false) String description) {
+
+        String receiptUrl = fileStorageService.storeReceipt(file);
+        ExpenseDTO expense = expenseService.submitExpense(
+                tripId, category, amount, currency, description, receiptUrl);
+        return ResponseEntity.ok(ApiResponse.success("Receipt uploaded", expense));
     }
 
     /** Submit a new expense claim for a trip */

@@ -1,9 +1,17 @@
 package com.team7.mobile.business.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team7.mobile.common.dto.ItineraryDTO;
+import com.team7.mobile.common.dto.ItineraryItemDTO;
 import com.team7.mobile.common.dto.TripDTO;
+import com.team7.mobile.common.dto.TripDetailDTO;
 import com.team7.mobile.common.dto.TripRequest;
+import com.team7.mobile.data.entity.Itinerary;
+import com.team7.mobile.data.entity.ItineraryItem;
 import com.team7.mobile.data.entity.Trip;
 import com.team7.mobile.data.entity.User;
+import com.team7.mobile.data.repository.ItineraryItemRepository;
+import com.team7.mobile.data.repository.ItineraryRepository;
 import com.team7.mobile.data.repository.TripRepository;
 import com.team7.mobile.business.util.CurrentUser;
 import com.team7.mobile.business.agent.AgentOrchestrator;
@@ -11,6 +19,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,14 +33,24 @@ import java.util.stream.Collectors;
 public class TripService {
 
     private final TripRepository tripRepository;
+    private final ItineraryRepository itineraryRepository;
+    private final ItineraryItemRepository itineraryItemRepository;
     private final CurrentUser currentUser;
     private final AgentOrchestrator agentOrchestrator;
+    private final ObjectMapper objectMapper;
 
-    public TripService(TripRepository tripRepository, CurrentUser currentUser,
-                       AgentOrchestrator agentOrchestrator) {
+    public TripService(TripRepository tripRepository,
+                       ItineraryRepository itineraryRepository,
+                       ItineraryItemRepository itineraryItemRepository,
+                       CurrentUser currentUser,
+                       AgentOrchestrator agentOrchestrator,
+                       ObjectMapper objectMapper) {
         this.tripRepository = tripRepository;
+        this.itineraryRepository = itineraryRepository;
+        this.itineraryItemRepository = itineraryItemRepository;
         this.currentUser = currentUser;
         this.agentOrchestrator = agentOrchestrator;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -64,6 +84,21 @@ public class TripService {
     public TripDTO getTripById(Long tripId) {
         Trip trip = findOwnedTrip(tripId);
         return toDTO(trip);
+    }
+
+    /**
+     * Get full trip detail including day-by-day itinerary (owner only).
+     */
+    public TripDetailDTO getTripDetail(Long tripId) {
+        Trip trip = findOwnedTrip(tripId);
+        List<ItineraryDTO> itineraries = itineraryRepository.findByTripIdOrderByDayNumber(tripId)
+                .stream().map(this::toItineraryDTO)
+                .collect(Collectors.toList());
+        return new TripDetailDTO(
+                trip.getId(), trip.getTitle(), trip.getDestination(),
+                trip.getStartDate(), trip.getEndDate(), trip.getBudgetTotal(),
+                trip.getStatus().name(), itineraries
+        );
     }
 
     /**
@@ -133,7 +168,7 @@ public class TripService {
 
         Map<String, Object> itinerary = agentOrchestrator.generateItinerary(tripData);
 
-        // Step 3: persist extracted info back to the trip record
+        // Step 3: persist extracted info + generated itinerary
         Trip trip = findOwnedTrip(tripId);
         if (extracted.get("destination") != null) trip.setDestination((String) extracted.get("destination"));
         if (extracted.get("startDate") != null) trip.setStartDate(LocalDate.parse((String) extracted.get("startDate")));
@@ -142,10 +177,112 @@ public class TripService {
         trip.setStatus(Trip.TripStatus.PLANNED);
         tripRepository.save(trip);
 
+        saveItinerary(trip, itinerary);
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", "ITINERARY_READY");
         result.put("itinerary", itinerary);
         return result;
+    }
+
+    /**
+     * Parse Agent itinerary JSON ({day1: {date, flight, hotel, breakfast, lunch, dinner, attraction}, ...})
+     * and persist as Itinerary + ItineraryItem rows. Replaces any previous plan.
+     */
+    @SuppressWarnings("unchecked")
+    private void saveItinerary(Trip trip, Map<String, Object> agentItinerary) {
+        // Replace previous plan
+        itineraryRepository.deleteByTripId(trip.getId());
+
+        int dayNumber = 1;
+        while (true) {
+            Object dayObj = agentItinerary.get("day" + dayNumber);
+            if (!(dayObj instanceof Map)) break;
+
+            Map<String, Object> day = (Map<String, Object>) dayObj;
+            Itinerary itinerary = new Itinerary();
+            itinerary.setTrip(trip);
+            itinerary.setDayNumber(dayNumber);
+            itinerary.setDate(LocalDate.parse((String) day.getOrDefault("date", trip.getStartDate().toString())));
+            itinerary.setGeneratedByAgent(true);
+            itinerary = itineraryRepository.save(itinerary);
+
+            saveItem(itinerary, "FLIGHT", day.get("flight"));
+            saveItem(itinerary, "HOTEL", day.get("hotel"));
+            saveItem(itinerary, "MEAL", day.get("breakfast"));
+            saveItem(itinerary, "MEAL", day.get("lunch"));
+            saveItem(itinerary, "MEAL", day.get("dinner"));
+            saveItem(itinerary, "ATTRACTION", day.get("attraction"));
+
+            dayNumber++;
+        }
+    }
+
+    /** Persist one activity object (or skip if null) — keeps raw JSON in description. */
+    @SuppressWarnings("unchecked")
+    private void saveItem(Itinerary itinerary, String type, Object activityObj) {
+        if (!(activityObj instanceof Map)) return;
+        Map<String, Object> activity = (Map<String, Object>) activityObj;
+
+        ItineraryItem item = new ItineraryItem();
+        item.setItinerary(itinerary);
+        item.setType(ItineraryItem.ItemType.valueOf(type));
+        item.setTitle(extractTitle(activity));
+        item.setStartTime(parseDateTime(activity.get("startTime")));
+        item.setEndTime(parseDateTime(activity.get("endTime")));
+        item.setLocation(str(activity.get("location")));
+        item.setBookingRef(str(activity.get("bookingRef")));
+        item.setPrice(parsePrice(activity));
+        item.setCurrency(str(activity.getOrDefault("currency", "CNY")));
+        // Keep the full raw activity JSON so no Agent data is lost
+        try {
+            item.setDescription(objectMapper.writeValueAsString(activity));
+        } catch (Exception e) {
+            item.setDescription(String.valueOf(activity));
+        }
+        itineraryItemRepository.save(item);
+    }
+
+    /** Pick a display title from common fields. */
+    private String extractTitle(Map<String, Object> activity) {
+        for (String key : new String[]{"title", "name", "hotelName", "airline", "restaurantName", "attractionName", "flightNumber"}) {
+            if (activity.get(key) != null) return String.valueOf(activity.get(key));
+        }
+        return "";
+    }
+
+    private String str(Object v) { return v != null ? String.valueOf(v) : null; }
+
+    private LocalDateTime parseDateTime(Object v) {
+        if (v == null) return null;
+        try { return LocalDateTime.parse(String.valueOf(v)); } catch (Exception e) { return null; }
+    }
+
+    private BigDecimal parsePrice(Map<String, Object> activity) {
+        for (String key : new String[]{"price", "totalPrice", "amount"}) {
+            Object v = activity.get(key);
+            if (v != null) {
+                try { return new BigDecimal(v.toString()); } catch (Exception e) { /* ignore */ }
+            }
+        }
+        return null;
+    }
+
+    private ItineraryDTO toItineraryDTO(Itinerary itinerary) {
+        List<ItineraryItemDTO> items = itineraryItemRepository.findByItineraryId(itinerary.getId())
+                .stream().map(this::toItemDTO)
+                .collect(Collectors.toList());
+        return new ItineraryDTO(itinerary.getId(), itinerary.getDayNumber(), itinerary.getDate(),
+                itinerary.getGeneratedByAgent(), items);
+    }
+
+    private ItineraryItemDTO toItemDTO(ItineraryItem item) {
+        return new ItineraryItemDTO(
+                item.getId(), item.getType().name(),
+                item.getStartTime(), item.getEndTime(),
+                item.getTitle(), item.getDescription(), item.getLocation(),
+                item.getBookingRef(), item.getPrice(), item.getCurrency()
+        );
     }
 
     private Trip findOwnedTrip(Long tripId) {
