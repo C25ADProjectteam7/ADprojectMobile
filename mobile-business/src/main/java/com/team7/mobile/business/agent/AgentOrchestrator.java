@@ -1,12 +1,13 @@
 package com.team7.mobile.business.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team7.mobile.common.exception.ExternalApiException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -40,8 +41,7 @@ public class AgentOrchestrator {
     public Map<String, Object> extractRequirements(String userInput) {
         String url = agentBaseUrl + "/api/agent/extract-requirements";
         Map<String, String> body = Map.of("userInput", userInput);
-        ResponseEntity<Map> response = restTemplate.postForEntity(url, jsonHeaders(body), Map.class);
-        return (Map<String, Object>) response.getBody();
+        return call(url, body);
     }
 
     /**
@@ -50,8 +50,7 @@ public class AgentOrchestrator {
     @SuppressWarnings("unchecked")
     public Map<String, Object> generateItinerary(Map<String, Object> tripData) {
         String url = agentBaseUrl + "/api/agent/generate-itinerary";
-        ResponseEntity<Map> response = restTemplate.postForEntity(url, jsonHeaders(tripData), Map.class);
-        return (Map<String, Object>) response.getBody();
+        return call(url, tripData);
     }
 
     /**
@@ -64,8 +63,18 @@ public class AgentOrchestrator {
                 "currentItinerary", (Object) currentItinerary,
                 "userRequest", userRequest
         );
-        ResponseEntity<Map> response = restTemplate.postForEntity(url, jsonHeaders(body), Map.class);
-        return (Map<String, Object>) response.getBody();
+        return call(url, body);
+    }
+
+    /** Shared POST helper — wraps transport errors as ExternalApiException (502). */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> call(String url, Object body) {
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, jsonHeaders(body), Map.class);
+            return (Map<String, Object>) response.getBody();
+        } catch (RestClientException e) {
+            throw new ExternalApiException("AgentService", url + " — " + e.getMessage(), e);
+        }
     }
 
     private HttpEntity<String> jsonHeaders(Object body) {

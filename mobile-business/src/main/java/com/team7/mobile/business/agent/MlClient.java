@@ -1,9 +1,11 @@
 package com.team7.mobile.business.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team7.mobile.common.exception.ExternalApiException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.LinkedHashMap;
@@ -53,8 +55,12 @@ public class MlClient {
         request.forEach((k, v) -> snakeCase.put(toSnakeCase(k), v));
 
         String url = mlBaseUrl + "/api/ml/predict-hotel-price";
-        ResponseEntity<Map> response = restTemplate.postForEntity(url, jsonHeaders(snakeCase), Map.class);
-        return (Map<String, Object>) response.getBody();
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, jsonHeaders(snakeCase), Map.class);
+            return (Map<String, Object>) response.getBody();
+        } catch (RestClientException e) {
+            throw new ExternalApiException("MLService", url + " — " + e.getMessage(), e);
+        }
     }
 
     /** camelCase → snake_case: checkInDate → check_in_date */

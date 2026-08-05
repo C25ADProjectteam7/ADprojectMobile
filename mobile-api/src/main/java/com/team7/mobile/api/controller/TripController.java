@@ -51,4 +51,16 @@ public class TripController {
         tripService.cancelTrip(id);
         return ResponseEntity.ok(Map.of("message", "Trip cancelled"));
     }
+
+    /**
+     * Chat with the Agent to plan/modify this trip.
+     * Body: { "message": "I want to go to Singapore for 3 days, budget 2000" }
+     * Returns NEEDS_MORE_INFO (with clarifyingQuestion) or ITINERARY_READY (with itinerary).
+     */
+    @PostMapping("/{id}/agent-chat")
+    public ResponseEntity<Map<String, Object>> agentChat(@PathVariable Long id,
+                                                         @RequestBody Map<String, String> body) {
+        String message = body.get("message");
+        return ResponseEntity.ok(tripService.agentChat(id, message));
+    }
 }
