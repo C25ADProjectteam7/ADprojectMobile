@@ -130,6 +130,7 @@ jobs:
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
 
       # Trivy — container image CVE scanner
+      # Fixed cache key (default is date-based → re-downloads 940MB DB daily)
       - uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
@@ -137,6 +138,7 @@ jobs:
           output: 'trivy-results.sarif'
           severity: 'CRITICAL'
           exit-code: '0'
+          cache-key: cache-trivy-${{ runner.os }}-v1
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
