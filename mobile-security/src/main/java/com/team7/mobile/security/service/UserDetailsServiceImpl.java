@@ -8,6 +8,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 /**
  * Loads user from DB for Spring Security authentication.
@@ -33,7 +34,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                 user.getEnabled(),
                 true, true, true,
                 Collections.singletonList(
-                        () -> "ROLE_" + user.getRole().name()
+                        new SimpleGrantedAuthority("ROLE_" + user.getRole().name())
                 )
         );
     }

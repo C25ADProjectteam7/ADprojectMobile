@@ -37,12 +37,10 @@ public class AuthService {
         Authentication auth = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
         );
-        String role = auth.getAuthorities().stream()
-                .findFirst()
-                .map(Object::toString)
-                .orElse("ROLE_EMPLOYEE");
+        User user = userRepository.findByUsername(request.getUsername())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        String role = "ROLE_" + user.getRole().name();
         String token = jwtTokenProvider.generateToken(request.getUsername(), role);
-        User user = userRepository.findByUsername(request.getUsername()).orElseThrow();
         return new LoginResponse(token, "Bearer", 86400000L,
                 user.getId(), user.getUsername(), role);
     }
