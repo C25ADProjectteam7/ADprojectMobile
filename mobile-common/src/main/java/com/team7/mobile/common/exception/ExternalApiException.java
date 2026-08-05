@@ -1,9 +1,17 @@
 package com.team7.mobile.common.exception;
 
 /**
- * 外部 API 调用异常 — Amadeus/Google Places API 调用失败时抛出
- * <p>
- * 包装第三方 API 的错误信息，记录原始请求和响应用于排查
+ * Thrown when an external API call fails (Agent/ML service, Amadeus, Google Places).
+ * Mapped to HTTP 502 Bad Gateway.
  */
-// TODO: 保存 API 名称、请求参数、原始错误信息，用于日志追踪
+public class ExternalApiException extends BusinessException {
 
+    public ExternalApiException(String apiName, String message) {
+        super("EXTERNAL_API_ERROR", apiName + " call failed: " + message, 502);
+    }
+
+    public ExternalApiException(String apiName, String message, Throwable cause) {
+        super("EXTERNAL_API_ERROR", apiName + " call failed: " + message, 502);
+        initCause(cause);
+    }
+}

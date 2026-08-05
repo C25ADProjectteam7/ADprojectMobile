@@ -1,12 +1,39 @@
 package com.team7.mobile.common.dto;
 
 /**
- * 统一 API 响应包装类 — 所有 REST API 返回格式统一为此结构
- * <p>
- * 包含三个字段：code (状态码), message (提示信息), data (业务数据)
- * 泛型 T 支持任意类型的数据载荷
- * <p>
- * 示例：ApiResponse<UserDTO> response = ApiResponse.success(userDTO);
+ * Unified API response wrapper — every REST endpoint returns this shape:
+ *   { "code": 200, "message": "success", "data": ... }
  */
-// TODO: 定义 code, message, data 字段；提供 success() 和 error() 静态工厂方法
+public class ApiResponse<T> {
 
+    private int code;
+    private String message;
+    private T data;
+
+    public ApiResponse() {}
+
+    public ApiResponse(int code, String message, T data) {
+        this.code = code;
+        this.message = message;
+        this.data = data;
+    }
+
+    public static <T> ApiResponse<T> success(T data) {
+        return new ApiResponse<>(200, "success", data);
+    }
+
+    public static <T> ApiResponse<T> success(String message, T data) {
+        return new ApiResponse<>(200, message, data);
+    }
+
+    public static <T> ApiResponse<T> error(int code, String message) {
+        return new ApiResponse<>(code, message, null);
+    }
+
+    public int getCode() { return code; }
+    public void setCode(int code) { this.code = code; }
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
+    public T getData() { return data; }
+    public void setData(T data) { this.data = data; }
+}

@@ -1,26 +1,90 @@
 package com.team7.mobile.business.agent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team7.mobile.common.exception.ExternalApiException;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.Map;
 
 /**
- * Agent 编排器 — Spring Boot 与 Python Agent 服务之间的桥梁
- * <p>
- * 职责：将用户的行程需求转发给 Python FastAPI Agent 服务，等待 Agent 完成推理
- * 并返回结构化行程数据
- * <p>
- * 核心流程：
- * 1. generateItinerary(TripRequest):
- *    → 将请求转为 Agent 可理解的 prompt → 调用 Python Agent → 返回完整行程 JSON
- *
- * 2. modifyItinerary(tripId, userMessage):
- *    → 加载历史对话 → 追加用户新请求 → 调用 Agent re-plan → 返回更新后的行程
- *
- * 3. analyzeBudget(tripRequest):
- *    → 调用 ML 预算分配模型 → 获得机票/酒店/餐饮分配建议 → 传给 Agent 用于约束搜索
- * <p>
- * Python Agent 地址通过配置项 agent.ml.service.url 指定（Docker 内部网络: http://agent-ml:8000）
+ * Bridges Spring Boot with the Python FastAPI Agent service.
+ * Calls 3 endpoints implemented by the Agent teammate on feature/agentic-ai:
+ * 1. /extract-requirements   — parse natural-language trip request
+ * 2. /generate-itinerary     — produce full day-by-day itinerary
+ * 3. /modify-itinerary       — conversational re-plan
  */
-// TODO: 实现与 Python Agent 的 HTTP 通信，超时重试，错误处理，对话历史管理
 @Service
 public class AgentOrchestrator {
+
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    private final String agentBaseUrl;
+
+    public AgentOrchestrator(
+            @Value("${app.agent.ml-service.url}") String agentBaseUrl,
+            RestTemplate restTemplate,
+            ObjectMapper objectMapper) {
+        this.agentBaseUrl = agentBaseUrl;
+        this.restTemplate = restTemplate;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * Backlog #4: Extract structured trip requirements from free-text input.
+     * Returns extracted fields + missingFields + clarifyingQuestion.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> extractRequirements(String userInput) {
+        String url = agentBaseUrl + "/api/agent/extract-requirements";
+        Map<String, String> body = Map.of("userInput", userInput);
+        return call(url, body);
+    }
+
+    /**
+     * Backlog #6: Generate complete itinerary from structured trip data.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> generateItinerary(Map<String, Object> tripData) {
+        String url = agentBaseUrl + "/api/agent/generate-itinerary";
+        return call(url, tripData);
+    }
+
+    /**
+     * Backlog #10: Modify an existing itinerary via conversational input.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> modifyItinerary(Map<String, Object> currentItinerary, String userRequest) {
+        String url = agentBaseUrl + "/api/agent/modify-itinerary";
+        Map<String, Object> body = Map.of(
+                "currentItinerary", (Object) currentItinerary,
+                "userRequest", userRequest
+        );
+        return call(url, body);
+    }
+
+    /** Shared POST helper — wraps transport errors as ExternalApiException (502). */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> call(String url, Object body) {
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, jsonHeaders(body), Map.class);
+            return (Map<String, Object>) response.getBody();
+        } catch (RestClientException e) {
+            throw new ExternalApiException("AgentService", url + " — " + e.getMessage(), e);
+        }
+    }
+
+    private HttpEntity<String> jsonHeaders(Object body) {
+        try {
+            String json = objectMapper.writeValueAsString(body);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            return new HttpEntity<>(json, headers);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize request body", e);
+        }
+    }
 }

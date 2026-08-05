@@ -1,13 +1,17 @@
 package com.team7.mobile.data.repository;
 
+import com.team7.mobile.data.entity.Booking;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import java.util.List;
+import java.util.Optional;
 
-/**
- * 预订记录数据访问接口
- * 提供按用户、行程、预订状态、预订类型查询的方法
- */
-// TODO: 定义自定义查询 — findByTripId(Long), findByUserId(Long), findByStatus(Boolean)
 @Repository
-public interface BookingRepository extends JpaRepository<com.team7.mobile.data.entity.Booking, Long> {
+public interface BookingRepository extends JpaRepository<Booking, Long> {
+
+    List<Booking> findByUserId(Long userId);
+
+    List<Booking> findByTripId(Long tripId);
+
+    Optional<Booking> findByIdAndUserId(Long id, Long userId);
 }
