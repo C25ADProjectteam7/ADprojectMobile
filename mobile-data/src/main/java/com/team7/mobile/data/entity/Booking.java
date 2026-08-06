@@ -5,19 +5,86 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 预订记录实体 — 映射 bookings 表
- * <p>
- * Agent 自动调用 Amadeus 模拟预订 API 后生成的预订记录
- * type: FLIGHT/HOTEL
- * bookingRef: 外部预订系统的确认编号
- * status: PENDING → CONFIRMED → CHECKED_IN → COMPLETED
+ * Booking entity — maps to bookings table.
+ * Agent or user creates a booking for a flight or hotel within a trip.
  */
-// TODO: 定义字段 — id, trip(FK), user(FK), type, flight(FK nullable), hotel(FK nullable)
-// TODO: bookingRef(外部预订号), price, currency, status, bookedAt, createdAt
 @Entity
 @Table(name = "bookings")
 public class Booking {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "trip_id", nullable = false)
+    private Trip trip;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private BookingType type;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "flight_id")
+    private Flight flight;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "hotel_id")
+    private Hotel hotel;
+
+    @Column(length = 100)
+    private String bookingRef;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal price;
+
+    @Column(length = 3)
+    private String currency = "CNY";
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private BookingStatus status = BookingStatus.PENDING;
+
+    private LocalDateTime bookedAt;
+
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    public Long getId() { return id; }
+    public Trip getTrip() { return trip; }
+    public void setTrip(Trip trip) { this.trip = trip; }
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
+    public BookingType getType() { return type; }
+    public void setType(BookingType type) { this.type = type; }
+    public Flight getFlight() { return flight; }
+    public void setFlight(Flight flight) { this.flight = flight; }
+    public Hotel getHotel() { return hotel; }
+    public void setHotel(Hotel hotel) { this.hotel = hotel; }
+    public String getBookingRef() { return bookingRef; }
+    public void setBookingRef(String bookingRef) { this.bookingRef = bookingRef; }
+    public BigDecimal getPrice() { return price; }
+    public void setPrice(BigDecimal price) { this.price = price; }
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
+    public BookingStatus getStatus() { return status; }
+    public void setStatus(BookingStatus status) { this.status = status; }
+
+    public enum BookingType {
+        FLIGHT, HOTEL
+    }
+
+    public enum BookingStatus {
+        PENDING, CONFIRMED, CHECKED_IN, COMPLETED, CANCELLED, FAILED
+    }
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        if (bookedAt == null) bookedAt = LocalDateTime.now();
+    }
 }

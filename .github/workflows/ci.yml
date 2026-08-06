@@ -8,6 +8,7 @@ name: CI/CD Pipeline
 permissions:
   contents: read
   security-events: write
+  actions: write # required for cache save (otherwise cache is read-only)
 
 on:
   push:
@@ -31,7 +32,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.12
-      - run: gradle build -x test --no-daemon
+      # -x spotbugs* : SpotBugs runs only in SAST job (avoid duplicate execution)
+      - run: gradle build -x test -x spotbugsMain -x spotbugsTest --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: spring-boot-jar
@@ -143,22 +145,35 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       # Build image, scan with Trivy, then push to Docker Hub
-      - uses: docker/build-push-action@v6
+      # Build image (load to local daemon for scanning, do NOT push yet)
+      - uses: docker/build-push-action@v6.19.2
         with:
           context: .
           file: Dockerfile.ci
-          push: true
+          push: false
           load: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
 
-      # Trivy — container image CVE scanner
-      - uses: aquasecurity/trivy-action@master
+      # Trivy — container image CVE scanner (scan BEFORE pushing to registry)
+      # Fixed cache key (default is date-based → re-downloads 940MB DB daily)
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL"
           exit-code: "0"
+          cache-key: cache-trivy-${{ runner.os }}-v1
+
+      # Push only if build + scan steps succeeded
+      - uses: docker/build-push-action@v6.19.2
+        if: success()
+        with:
+          context: .
+          file: Dockerfile.ci
+          push: true
+          load: false
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
@@ -187,6 +202,7 @@ jobs:
             cd /home/xiazihang/ADprojectMobile
             git pull origin main
             docker compose pull spring-api
+            docker compose build agent-ml
             docker compose up -d
             docker compose ps
             echo "=== DEPLOY COMPLETED ==="

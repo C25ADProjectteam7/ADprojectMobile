@@ -1,19 +1,50 @@
 package com.team7.mobile.security.filter;
 
+import com.team7.mobile.security.jwt.JwtTokenProvider;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.List;
 
 /**
- * JWT 认证过滤器 — 在每次 HTTP 请求到达 Controller 之前拦截并验证 Token
- * <p>
- * 流程：
- * 1. 从 Authorization Header 中提取 "Bearer <token>"
- * 2. 调用 JwtTokenProvider.validateToken() 验证
- * 3. 验证通过则从 Token 提取用户信息，创建 Authentication 对象并写入 SecurityContext
- * 4. 验证失败则直接返回 401，不继续走过滤器链
- * <p>
- * 继承 OncePerRequestFilter：保证每个请求只经过一次过滤
+ * Extracts JWT from Authorization header, validates it,
+ * and sets the SecurityContext for downstream controllers.
  */
-// TODO: 实现 doFilterInternal()，从 Header 提取 Token → 验证 → 设置 SecurityContext
 @Component
-public class JwtAuthFilter {
+public class JwtAuthFilter extends OncePerRequestFilter {
+
+    private final JwtTokenProvider jwtTokenProvider;
+
+    public JwtAuthFilter(JwtTokenProvider jwtTokenProvider) {
+        this.jwtTokenProvider = jwtTokenProvider;
+    }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
+            if (jwtTokenProvider.validateToken(token)) {
+                String username = jwtTokenProvider.getUsernameFromToken(token);
+                String role = jwtTokenProvider.getRoleFromToken(token);
+                UsernamePasswordAuthenticationToken auth =
+                        new UsernamePasswordAuthenticationToken(
+                                username, null,
+                                List.of(new SimpleGrantedAuthority(role))
+                        );
+                SecurityContextHolder.getContext().setAuthentication(auth);
+            }
+        }
+        filterChain.doFilter(request, response);
+    }
 }

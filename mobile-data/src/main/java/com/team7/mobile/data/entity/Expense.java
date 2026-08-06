@@ -5,18 +5,82 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 费用/报销实体 — 映射 expenses 表
- * <p>
- * 员工出差后提交报销申请，支持拍照扫描发票（receiptUrl 指向上传的图片路径）
- * category: FLIGHT/HOTEL/MEAL/TRANSPORT/OTHER
- * 审核流程：SUBMITTED → (财务审核) → APPROVED/REJECTED
+ * Expense entity — maps to expenses table.
+ * Employees submit reimbursement claims with receipt images.
  */
-// TODO: 定义字段 — id, trip(FK), user(FK), category, amount, currency
-// TODO: description, receiptUrl(发票图片), status, submittedAt, reviewedAt, reviewNote
 @Entity
 @Table(name = "expenses")
 public class Expense {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "trip_id", nullable = false)
+    private Trip trip;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ExpenseCategory category;
+
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal amount;
+
+    @Column(length = 3)
+    private String currency = "CNY";
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(length = 500)
+    private String receiptUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ExpenseStatus status = ExpenseStatus.SUBMITTED;
+
+    private LocalDateTime submittedAt;
+
+    private LocalDateTime reviewedAt;
+
+    @Column(columnDefinition = "TEXT")
+    private String reviewNote;
+
+    public Long getId() { return id; }
+    public Trip getTrip() { return trip; }
+    public void setTrip(Trip trip) { this.trip = trip; }
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
+    public ExpenseCategory getCategory() { return category; }
+    public void setCategory(ExpenseCategory category) { this.category = category; }
+    public BigDecimal getAmount() { return amount; }
+    public void setAmount(BigDecimal amount) { this.amount = amount; }
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public String getReceiptUrl() { return receiptUrl; }
+    public void setReceiptUrl(String receiptUrl) { this.receiptUrl = receiptUrl; }
+    public ExpenseStatus getStatus() { return status; }
+    public void setStatus(ExpenseStatus status) { this.status = status; }
+    public LocalDateTime getSubmittedAt() { return submittedAt; }
+    public void setSubmittedAt(LocalDateTime submittedAt) { this.submittedAt = submittedAt; }
+
+    public enum ExpenseCategory {
+        FLIGHT, HOTEL, MEAL, TRANSPORT, OTHER
+    }
+
+    public enum ExpenseStatus {
+        SUBMITTED, APPROVED, REJECTED
+    }
+
+    @PrePersist
+    protected void onCreate() {
+        if (submittedAt == null) submittedAt = LocalDateTime.now();
+    }
 }

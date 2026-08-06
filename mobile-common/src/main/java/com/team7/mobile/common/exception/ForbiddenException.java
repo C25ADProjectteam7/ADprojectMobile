@@ -1,9 +1,11 @@
 package com.team7.mobile.common.exception;
 
 /**
- * 禁止访问异常 — 用户角色无权限执行操作时抛出（HTTP 403）
- * <p>
- * 示例：普通员工尝试访问管理员专属 API
+ * Thrown when the user's role has no permission for the operation (HTTP 403).
  */
-// TODO: 继承 BusinessException，errorCode = "FORBIDDEN"
+public class ForbiddenException extends BusinessException {
 
+    public ForbiddenException(String message) {
+        super("FORBIDDEN", message, 403);
+    }
+}
