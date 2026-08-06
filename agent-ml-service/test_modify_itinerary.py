@@ -8,7 +8,7 @@ async def main():
         "Flying from Beijing, budget 2000, going to Singapore next Monday for 3 days, want seafood"
     )
     original = await generate_itinerary(extracted)
-    updated = await modify_itinerary(original, "Can you find me a nicer, more expensive hotel instead?")
+    updated = await modify_itinerary(original, "Can you find me a nicer, more expensive hotel instead?", debug=True)
 
     print("=== Comparing day-by-day ===")
     for day_key in sorted(k for k in original if k.startswith("day")):
@@ -22,8 +22,8 @@ async def main():
             changed = "CHANGED" if orig_name != upd_name else "same"
             print(f"{day_key}.{field}: {orig_name} -> {upd_name}  [{changed}]")
 
-    print(f"\nOriginal totalCost: {original.get('totalCost')}")
-    print(f"Updated totalCost: {updated.get('totalCost')}")
+    print(f"\nOriginal totalCostSGD: {original.get('totalCostSGD')} (USD: {original.get('totalCostOriginalUSD')})")
+    print(f"Updated totalCostSGD: {updated.get('totalCostSGD')} (USD: {updated.get('totalCostOriginalUSD')})")
 
 
 if __name__ == "__main__":

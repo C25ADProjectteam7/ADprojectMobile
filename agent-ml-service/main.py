@@ -15,8 +15,10 @@ API endpoints:
 - GET  /health                        → health check
 """
 
+import asyncio
 from fastapi import FastAPI
 from agent.routes import router as agent_router
+from agent.task_manager import start_cleanup_loop
 
 app = FastAPI(
     title="Team7 Agent & ML Service",
@@ -30,6 +32,11 @@ async def health_check():
     return {"status": "healthy", "service": "agent-ml-service"}
 
 app.include_router(agent_router)
+
+@app.on_event("startup")
+async def startup_event():
+    """Starts the background task-cleanup loop when the app starts."""
+    asyncio.create_task(start_cleanup_loop())
 
 # TODO: register ml routes (from ml.routes import router as ml_router)
 

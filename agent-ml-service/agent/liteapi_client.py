@@ -87,13 +87,27 @@ async def _get_hotel_rates(hotel_ids: list[str], check_in: str, check_out: str,
 async def search_hotels_by_coordinates(latitude: float, longitude: float, check_in: str,
                                         check_out: str, budget: float,
                                         guest_nationality: str = "SG") -> dict:
-    """Backlog #5/#7: real hotel search - combines hotel metadata with live pricing."""
+    """Backlog #5/#7: real hotel search - combines hotel metadata with live pricing.
+    Also computes estimated travel time from the search origin to each hotel,
+    so fallback/alternative results can explain a "farther location" trade-off,
+    not just a budget one (Backlog #7)."""
     hotels = await _get_hotel_list(latitude, longitude)
     if not hotels:
         return {"hotels": [], "budgetRelaxed": False, "note": "No hotels found near this location."}
 
     hotel_ids = [h["id"] for h in hotels]
     rates = await _get_hotel_rates(hotel_ids, check_in, check_out, guest_nationality)
+
+    # Compute travel time from the search origin to each hotel (batched, one
+    # API call), so alternative/relaxed results can be explained in terms of
+    # distance, not just price - see Backlog #7's "farther location" example.
+    from agent.distance_client import get_travel_times_minutes
+    hotels_with_coords = [h for h in hotels if h.get("latitude") is not None]
+    coords = [(h["latitude"], h["longitude"]) for h in hotels_with_coords]
+    travel_times = await get_travel_times_minutes(latitude, longitude, coords) if coords else []
+    travel_time_by_id = {
+        h["id"]: t for h, t in zip(hotels_with_coords, travel_times)
+    }
 
     def _build_results(max_price):
         results = []
@@ -110,6 +124,7 @@ async def search_hotels_by_coordinates(latitude: float, longitude: float, check_
                 "offerId": rate_info["offerId"],
                 "latitude": hotel.get("latitude"),
                 "longitude": hotel.get("longitude"),
+                "estimatedTravelTimeFromSearchOriginMinutes": travel_time_by_id.get(hotel["id"]),
             })
         return sorted(results, key=lambda h: h["pricePerNight"])[:5]
 
@@ -119,11 +134,23 @@ async def search_hotels_by_coordinates(latitude: float, longitude: float, check_
 
     relaxed_results = _build_results(budget * 1.5)
     if relaxed_results:
-        return {
-            "hotels": relaxed_results,
-            "budgetRelaxed": True,
-            "note": f"No hotels found within the ${budget:.0f} budget; showing options up to ${budget * 1.5:.0f} instead.",
-        }
+        note = f"No hotels found within the ${budget:.0f} budget; showing options up to ${budget * 1.5:.0f} instead."
+        times = [
+            h["estimatedTravelTimeFromSearchOriginMinutes"]
+            for h in relaxed_results
+            if h["estimatedTravelTimeFromSearchOriginMinutes"] is not None
+        ]
+        if times:
+            if min(times) == max(times):
+                distance_phrase = f"{min(times)} min"
+            else:
+                distance_phrase = f"{min(times)}-{max(times)} min"
+            note += (
+                f" Note: these alternatives are also {distance_phrase} "
+                f"from your search location - a trade-off between price and "
+                f"location convenience, not just a budget increase."
+            )
+        return {"hotels": relaxed_results, "budgetRelaxed": True, "note": note}
 
     return {"hotels": [], "budgetRelaxed": False, "note": "No hotels found near this location, even with a relaxed budget."}
 

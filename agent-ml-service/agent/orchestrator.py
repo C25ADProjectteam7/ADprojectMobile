@@ -17,7 +17,7 @@ modify_itinerary flow:
 import json
 import asyncio
 import functools
-from datetime import date
+from datetime import date, datetime, timezone
 from agent.deepseek_client import chat_json, chat_with_tools
 from agent import tools as agent_tools
 from agent.duffel_client import resolve_city_to_iata, resolve_city_to_country_code
@@ -325,6 +325,15 @@ Other rules:
 - Pick specific restaurants/attractions from the provided data for meals and
   sightseeing - do not repeat the exact same restaurant for every meal if
   multiple options were provided.
+- Use judgment about meal appropriateness: heavy dinner-style cuisine (e.g.
+  seafood boils, hotpot, fine dining) is usually NOT suitable for breakfast.
+  If none of the provided restaurant options seem appropriate for breakfast,
+  set "breakfast" to null rather than forcing an ill-fitting choice - it's
+  better to leave breakfast unplanned than to suggest something unrealistic.
+- CRITICAL: when including a flight or hotel object in the itinerary, you
+  MUST preserve ALL fields from the source data exactly as given, especially
+  "offerId" - this field is required for booking and must never be dropped,
+  renamed, or omitted, even though it looks like an internal/technical field.
 - If a category (e.g. attractions) has no data available, set that field to
   null rather than inventing something.
 - search_hotels/search_restaurants/search_attractions results may include a
@@ -377,10 +386,40 @@ async def _evaluate_hotel_convenience(itinerary: dict, threshold_minutes: int = 
     return None
 
 
-async def generate_itinerary(trip_requirements: dict) -> dict:
+def _ensure_offer_ids(itinerary: dict, gathered: dict) -> None:
+    """Backlog #8/#9 safety net: the LLM sometimes drops the offerId field
+    when assembling the itinerary JSON, even when explicitly instructed to
+    preserve it. Since offerId is required for booking, this repairs any
+    missing offerId by looking up the matching flight/hotel (by name/flight
+    number) in the raw search data, rather than relying solely on prompt
+    compliance."""
+    hotel_offers = {}
+    for call in gathered.get("search_hotels", []):
+        for h in call["results"].get("hotels", []):
+            hotel_offers[h["name"]] = h.get("offerId")
+
+    flight_offers = {}
+    for call in gathered.get("search_flights", []):
+        for f in call["results"]:
+            flight_offers[f["flightNumber"]] = f.get("offerId")
+
+    for key, day in itinerary.items():
+        if not key.startswith("day") or not isinstance(day, dict):
+            continue
+        hotel = day.get("hotel")
+        if hotel and not hotel.get("offerId") and hotel.get("name") in hotel_offers:
+            hotel["offerId"] = hotel_offers[hotel["name"]]
+        flight = day.get("flight")
+        if flight and not flight.get("offerId") and flight.get("flightNumber") in flight_offers:
+            flight["offerId"] = flight_offers[flight["flightNumber"]]
+
+async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> dict:
     """Backlog #6: full itinerary generation.
     Phase 1: gather real flight/hotel/restaurant/attraction data via tool calls.
-    Phase 2: assemble that data into a structured day-by-day itinerary JSON."""
+    Phase 2: assemble that data into a structured day-by-day itinerary JSON.
+    debug: if True, includes the full rawSearchData in the response (useful
+    for development/debugging); defaults to False to keep the production
+    response payload lean."""
     origin_city_name = trip_requirements['originCity']
     origin_code = await resolve_city_to_iata(origin_city_name)
     dest_code = await resolve_city_to_iata(trip_requirements['destination'])
@@ -438,7 +477,10 @@ async def generate_itinerary(trip_requirements: dict) -> dict:
     ]
     raw_itinerary = await chat_json(assembly_messages)
     itinerary = json.loads(raw_itinerary)
-    itinerary["rawSearchData"] = gathered
+    _ensure_offer_ids(itinerary, gathered)
+
+    if debug:
+        itinerary["rawSearchData"] = gathered
 
     rate_info = await get_usd_to_sgd_rate()
     usd_to_sgd = rate_info["rate"]
@@ -469,22 +511,57 @@ async def generate_itinerary(trip_requirements: dict) -> dict:
     convenience_warning = await _evaluate_hotel_convenience(itinerary, threshold_minutes=threshold)
     if convenience_warning:
         itinerary.setdefault("warnings", []).append(convenience_warning)
+
+    itinerary["generatedAt"] = datetime.now(timezone.utc).isoformat()
+
     return itinerary
 
-async def book_full_trip(flight_offer_id: str, hotel_offer_id: str,
+
+def _is_itinerary_stale(itinerary: dict, max_age_minutes: int = 5) -> bool:
+    """Backlog #9: checks whether an itinerary's embedded offerIds are likely
+    stale (Duffel/LiteAPI offers typically expire within minutes to tens of
+    minutes). Returns True if the itinerary is old enough that a fresh
+    re-search is recommended before attempting to book from it."""
+    generated_at_str = itinerary.get("generatedAt")
+    if not generated_at_str:
+        return True  # no timestamp - can't verify freshness, be conservative
+
+    try:
+        generated_at = datetime.fromisoformat(generated_at_str)
+        age = datetime.now(timezone.utc) - generated_at
+        return age.total_seconds() > max_age_minutes * 60
+    except (ValueError, TypeError):
+        return True  # malformed timestamp - be conservative
+
+async def book_full_trip(itinerary: dict, flight_offer_id: str, hotel_offer_id: str,
                           passenger_name: str, passenger_dob: str,
                           email: str, origin: str = None, destination: str = None,
-                          date: str = None, latitude: float = None, longitude: float = None,
+                          date_str: str = None, latitude: float = None, longitude: float = None,
                           check_in: str = None, check_out: str = None,
                           budget: float = None, guest_nationality: str = "SG") -> dict:
-    """Backlog #9: books flight + hotel together. If the hotel booking fails
-    after the flight already succeeded, automatically rolls back (cancels)
-    the flight to avoid leaving the traveler with a half-booked trip."""
-    from agent.duffel_client import book_flight_with_retry, cancel_flight_booking
+    """Backlog #9: books flight + hotel together. Proactively re-searches for
+    fresh offers if the source itinerary looks stale, rather than waiting for
+    a booking failure to trigger the reactive retry-with-research fallback."""
+    from agent.duffel_client import book_flight_with_retry, cancel_flight_booking, search_flights
     from agent.liteapi_client import book_hotel_with_retry
 
+    if _is_itinerary_stale(itinerary):
+        # Proactively refresh both offers before attempting to book, rather
+        # than relying solely on the reactive expired-offer retry path.
+        if origin and destination and date_str:
+            fresh_flights = await search_flights(origin, destination, date_str)
+            if fresh_flights:
+                flight_offer_id = fresh_flights[0]["offerId"]
+        if latitude is not None and longitude is not None and check_in and check_out and budget is not None:
+            from agent.liteapi_client import search_hotels_by_coordinates
+            fresh_hotels = await search_hotels_by_coordinates(
+                latitude, longitude, check_in, check_out, budget, guest_nationality
+            )
+            if fresh_hotels["hotels"]:
+                hotel_offer_id = fresh_hotels["hotels"][0]["offerId"]
+
     flight_result = await book_flight_with_retry(
-        flight_offer_id, passenger_name, passenger_dob, origin, destination, date
+        flight_offer_id, passenger_name, passenger_dob, origin, destination, date_str
     )
     if not flight_result["success"]:
         return {
@@ -512,7 +589,6 @@ async def book_full_trip(flight_offer_id: str, hotel_offer_id: str,
             "message": "Flight and hotel both booked successfully.",
         }
 
-    # Hotel failed after flight succeeded - roll back the flight
     order_id = flight_result.get("orderId")
     rollback_result = await cancel_flight_booking(order_id) if order_id else {"success": False, "error": "No orderId to cancel"}
 
@@ -582,12 +658,21 @@ exactly as it was in the current itinerary. Recalculate "totalCost" if the
 change affects flight or hotel pricing. Add a note to "warnings" summarizing
 what was changed (e.g. "Hotel changed from X to Y per your request").
 
+Use judgment about meal appropriateness when selecting/keeping restaurant
+choices: heavy dinner-style cuisine is usually not suitable for breakfast.
+
+CRITICAL: when including a flight or hotel object (whether unchanged or newly
+selected), you MUST preserve ALL fields exactly as given in the source data,
+especially "offerId" - this field is required for booking and must never be
+dropped, renamed, or omitted, even though it looks like an internal/technical
+field.
+
 Return ONLY the JSON object, no other text.
 """
 
 
 async def modify_itinerary(current_itinerary: dict, user_request: str,
-                            guest_nationality: str = "SG") -> dict:
+                            guest_nationality: str = "SG", debug: bool = False) -> dict:
     """Backlog #10: modifies an existing itinerary based on a natural-language
     change request. Stateless - the caller (Java backend) supplies the current
     itinerary each time; this function does not persist conversation history."""
@@ -603,7 +688,7 @@ async def modify_itinerary(current_itinerary: dict, user_request: str,
     schemas = agent_tools.get_tool_schemas()
     gathered = {"search_flights": [], "search_hotels": [], "search_restaurants": [], "search_attractions": []}
 
-    for _ in range(3):  # modification requests should need fewer calls than full generation
+    for _ in range(3):
         message = await chat_with_tools(messages, schemas)
 
         if not message.tool_calls:
@@ -627,19 +712,40 @@ async def modify_itinerary(current_itinerary: dict, user_request: str,
     ]
     raw_itinerary = await chat_json(assembly_messages)
     updated_itinerary = json.loads(raw_itinerary)
+    _ensure_offer_ids(updated_itinerary, gathered)
 
-    usd_to_sgd = await get_usd_to_sgd_rate()
+    if debug:
+        updated_itinerary["rawSearchData"] = gathered
+
+    rate_info = await get_usd_to_sgd_rate()
+    usd_to_sgd = rate_info["rate"]
     original_usd = updated_itinerary.get("totalCost")
-    if usd_to_sgd is not None and original_usd is not None:
+    if original_usd is not None:
         updated_itinerary["totalCostSGD"] = round(original_usd * usd_to_sgd, 2)
         updated_itinerary["currency"] = "SGD"
         updated_itinerary["totalCostOriginalUSD"] = original_usd
         updated_itinerary["exchangeRateUsed"] = usd_to_sgd
-        updated_itinerary["exchangeRateNote"] = (
-            "Amount shown is an estimate in SGD based on the daily reference rate "
-            "(source: European Central Bank via Frankfurter). All bookings are "
-            "actually transacted in USD (see totalCostOriginalUSD for the exact "
-            "amount) - this is not a guaranteed final SGD price."
-        )
-        del updated_itinerary["totalCost"]  # renamed to totalCostOriginalUSD for clarity, avoid duplicate/ambiguous field
+
+        if rate_info["source"] == "live":
+            note = ("Amount shown is an estimate in SGD based on today's reference rate. "
+                    "All bookings are actually transacted in USD.")
+        elif rate_info["source"] == "cached":
+            note = ("Amount shown is an estimate in SGD based on a recently cached "
+                    "exchange rate (today's live rate was temporarily unavailable). "
+                    "All bookings are actually transacted in USD.")
+        else:
+            note = ("Amount shown is a rough SGD estimate using a fallback exchange "
+                    "rate (live rate data was unavailable). All bookings are "
+                    "actually transacted in USD - please verify the exact amount "
+                    "before relying on this figure.")
+        updated_itinerary["exchangeRateNote"] = note
+
+        del updated_itinerary["totalCost"]
+
+    convenience_warning = await _evaluate_hotel_convenience(updated_itinerary)
+    if convenience_warning:
+        updated_itinerary.setdefault("warnings", []).append(convenience_warning)
+
+    updated_itinerary["generatedAt"] = datetime.now(timezone.utc).isoformat()
+
     return updated_itinerary

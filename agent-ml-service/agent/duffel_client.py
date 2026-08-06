@@ -18,6 +18,13 @@ from agent.http_utils import retry_on_timeout
 
 DUFFEL_VERSION = "v2"  # required header, pins the API schema version
 
+# Cache of city-name -> raw Duffel Places API response ("data" list).
+# City/airport metadata (IATA codes, coordinates, country codes) is static
+# for the lifetime of this process, so once a city has been looked up, all
+# three resolve_* functions below can reuse the same result instead of each
+# making its own identical API call.
+_place_cache: dict[str, list] = {}
+
 
 def _duffel_headers() -> dict:
     return {
@@ -28,10 +35,15 @@ def _duffel_headers() -> dict:
 
 
 @retry_on_timeout(max_attempts=3)
-async def resolve_city_to_iata(city_name: str) -> str | None:
-    """Backlog #5 support: converts a free-text city name (e.g. 'Singapore')
-    into an IATA code (e.g. 'SIN') using Duffel's Places suggestions endpoint.
-    Returns None if no match is found."""
+async def _get_place_data(city_name: str) -> list:
+    """Shared, cached lookup backing resolve_city_to_iata/coordinates/
+    country_code. Cache key is the city name as given (not normalized) -
+    callers passing inconsistent capitalization/spacing for the same city
+    will produce separate cache entries, which is a minor inefficiency but
+    not a correctness issue."""
+    if city_name in _place_cache:
+        return _place_cache[city_name]
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         response = await client.get(
             f"{config.DUFFEL_BASE_URL}/places/suggestions",
@@ -42,45 +54,37 @@ async def resolve_city_to_iata(city_name: str) -> str | None:
         data = response.json()
 
     places = data.get("data", [])
+    _place_cache[city_name] = places
+    return places
+
+
+async def resolve_city_to_iata(city_name: str) -> str | None:
+    """Backlog #5 support: converts a free-text city name (e.g. 'Singapore')
+    into an IATA code (e.g. 'SIN'). Returns None if no match is found."""
+    places = await _get_place_data(city_name)
     if not places:
         return None
 
-    # Prefer a city-level match (covers all airports in that city) over a
-    # single specific airport, since the user gave a city name, not an airport name
     for place in places:
         if place.get("type") == "city":
             return place["iata_code"]
 
-    # Fall back to the first result (likely a specific airport) if no city match
     return places[0]["iata_code"]
 
 
-@retry_on_timeout(max_attempts=3)
 async def resolve_city_to_coordinates(city_name: str) -> tuple[float, float] | None:
-    """Backlog #5 support: resolves a city name to (latitude, longitude) using
-    Duffel's Places suggestions endpoint. Used by LiteAPI's coordinate-based
-    hotel search. City-level records have null lat/lng themselves - coordinates
-    must be taken from one of the city's associated airports."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(
-            f"{config.DUFFEL_BASE_URL}/places/suggestions",
-            headers=_duffel_headers(),
-            params={"query": city_name},
-        )
-        response.raise_for_status()
-        data = response.json()
-
-    places = data.get("data", [])
+    """Backlog #5 support: resolves a city name to (latitude, longitude).
+    City-level records have null lat/lng themselves - coordinates must be
+    taken from one of the city's associated airports."""
+    places = await _get_place_data(city_name)
 
     for place in places:
         if place.get("type") == "city":
             airports = place.get("airports") or []
             if airports:
-                # Use the first listed airport's coordinates as the city's location
                 first_airport = airports[0]
                 return first_airport["latitude"], first_airport["longitude"]
 
-    # Fall back to the first airport-type result if no city record had airports
     for place in places:
         if place.get("type") == "airport" and place.get("latitude") is not None:
             return place["latitude"], place["longitude"]
@@ -88,21 +92,11 @@ async def resolve_city_to_coordinates(city_name: str) -> tuple[float, float] | N
     return None
 
 
-@retry_on_timeout(max_attempts=3)
 async def resolve_city_to_country_code(city_name: str) -> str | None:
-    """Resolves a city name to its ISO country code (e.g. 'Singapore' -> 'SG'),
-    using Duffel's Places suggestions endpoint. Used to derive guestNationality
-    for hotel pricing based on the traveler's origin city."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(
-            f"{config.DUFFEL_BASE_URL}/places/suggestions",
-            headers=_duffel_headers(),
-            params={"query": city_name},
-        )
-        response.raise_for_status()
-        data = response.json()
+    """Resolves a city name to its ISO country code (e.g. 'Singapore' -> 'SG').
+    Used to derive guestNationality for hotel pricing."""
+    places = await _get_place_data(city_name)
 
-    places = data.get("data", [])
     for place in places:
         if place.get("type") == "city" and place.get("iata_country_code"):
             return place["iata_country_code"]

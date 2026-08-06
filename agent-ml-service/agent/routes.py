@@ -1,9 +1,10 @@
 """Agent API routes - FastAPI router for agent endpoints"""
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from agent.orchestrator import extract_trip_requirements
-from agent.orchestrator import extract_trip_requirements, generate_itinerary
+from agent.orchestrator import extract_trip_requirements, generate_itinerary, modify_itinerary
+from agent.task_manager import create_task, get_task, run_in_background
 
 router = APIRouter(prefix="/api/agent", tags=["Agent"])
 
@@ -42,28 +43,40 @@ class GenerateItineraryRequest(BaseModel):
     endDate: str
     budgetTotal: float
     preferences: list[str] = []
+    debug: bool = False
 
 
 @router.post("/generate-itinerary")
 async def generate_itinerary_endpoint(request: GenerateItineraryRequest):
-    """Backlog #6: generates a complete day-by-day itinerary using real
-    flight, hotel, restaurant, and attraction data."""
-    result = await generate_itinerary(request.model_dump())
-    return result
+    """Backlog #6: starts itinerary generation as a background task.
+    Returns immediately with a taskId - poll GET /tasks/{taskId} for the result."""
+    task_id = create_task()
+    trip_requirements = request.model_dump(exclude={"debug"})
+    run_in_background(task_id, generate_itinerary(trip_requirements, debug=request.debug))
+    return {"taskId": task_id}
 
 
 class ModifyItineraryRequest(BaseModel):
     """Backlog #10: current itinerary + a natural-language change request"""
     currentItinerary: dict
     userRequest: str
+    debug: bool = False
 
 
 @router.post("/modify-itinerary")
 async def modify_itinerary_endpoint(request: ModifyItineraryRequest):
-    """Backlog #10: modifies an existing itinerary based on conversational input."""
-    from agent.orchestrator import modify_itinerary
-    result = await modify_itinerary(request.currentItinerary, request.userRequest)
-    return result
+    """Backlog #10: starts itinerary modification as a background task."""
+    task_id = create_task()
+    run_in_background(
+        task_id,
+        modify_itinerary(request.currentItinerary, request.userRequest, debug=request.debug)
+    )
+    return {"taskId": task_id}
 
-
-# TODO: GET  /api/agent/conversations/{id}
+@router.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    """Poll this endpoint to check on a background task's progress/result."""
+    task = get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"Unknown taskId: {task_id}")
+    return task

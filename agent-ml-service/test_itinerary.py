@@ -14,7 +14,7 @@ async def main():
         print("Missing fields:", extracted["missingFields"])
         return
 
-    itinerary = await generate_itinerary(extracted)
+    itinerary = await generate_itinerary(extracted, debug=True)
     print("\nGenerated itinerary:")
     print(json.dumps(itinerary, indent=2))
 
