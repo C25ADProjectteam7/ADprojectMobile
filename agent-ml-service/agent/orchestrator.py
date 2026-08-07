@@ -18,6 +18,8 @@ import json
 import asyncio
 import functools
 from datetime import date, datetime, timezone
+from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from agent.deepseek_client import chat_json, chat_with_tools
 from agent import tools as agent_tools
 from agent.duffel_client import resolve_city_to_iata, resolve_city_to_country_code
@@ -26,18 +28,268 @@ from agent.exchange_rate_client import get_usd_to_sgd_rate
 
 REQUIRED_FIELDS = ["originCity", "destination", "startDate", "endDate", "budgetTotal"]
 
-async def _execute_tool_calls(tool_calls, tool_dispatch):
-    """Execute all tool calls from one LLM turn concurrently, since they're
-    independent of each other (e.g. searching flights doesn't depend on
-    hotel search results). Returns a list of (call, func_name, func_args, result)."""
-    async def run_one(call):
-        func_name = call.function.name
-        func_args = json.loads(call.function.arguments)
-        func = tool_dispatch.get(func_name)
-        result = await func(**func_args) if func else {"error": f"unknown tool {func_name}"}
-        return call, func_name, func_args, result
+MAX_TOOL_CALLS_PER_TURN = 5
+MAX_TOOL_CALLS_PER_TASK = 8
+MAX_CALLS_PER_TOOL_PER_TASK = 2
 
-    return await asyncio.gather(*[run_one(call) for call in tool_calls])
+
+class _ToolArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class SearchFlightsArgs(_ToolArgs):
+    origin: str = Field(min_length=3, max_length=3)
+    destination: str = Field(min_length=3, max_length=3)
+    date: str
+
+    @field_validator("origin", "destination", mode="before")
+    @classmethod
+    def validate_iata_code(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("must be a 3-letter IATA code")
+        value = value.strip().upper()
+        if not value.isalpha() or len(value) != 3:
+            raise ValueError("must be a 3-letter IATA code")
+        return value
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, value: str) -> str:
+        date.fromisoformat(value)
+        return value
+
+
+class SearchHotelsArgs(_ToolArgs):
+    city: str = Field(min_length=1, max_length=100)
+    check_in: str
+    check_out: str
+    budget: float = Field(gt=0)
+
+    @field_validator("city")
+    @classmethod
+    def normalize_city(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("check_in", "check_out")
+    @classmethod
+    def validate_hotel_date(cls, value: str) -> str:
+        date.fromisoformat(value)
+        return value
+
+
+class _CitySearchArgs(_ToolArgs):
+    city: str = Field(min_length=1, max_length=100)
+
+    @field_validator("city")
+    @classmethod
+    def normalize_city(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
+class SearchRestaurantsArgs(_CitySearchArgs):
+    cuisine: str = Field(default="", max_length=100)
+
+
+class SearchAttractionsArgs(_CitySearchArgs):
+    category: str = Field(default="", max_length=100)
+
+
+TOOL_ARGUMENT_MODELS: dict[str, type[_ToolArgs]] = {
+    "search_flights": SearchFlightsArgs,
+    "search_hotels": SearchHotelsArgs,
+    "search_restaurants": SearchRestaurantsArgs,
+    "search_attractions": SearchAttractionsArgs,
+}
+
+class ItineraryDay(BaseModel):
+    """Validated shape for one day in an Agent-produced itinerary."""
+    model_config = ConfigDict(extra="allow")
+
+    date: str
+    flight: dict[str, Any] | None = None
+    hotel: dict[str, Any] | None = None
+    breakfast: dict[str, Any] | None = None
+    attraction: dict[str, Any] | None = None
+    lunch: dict[str, Any] | None = None
+    dinner: dict[str, Any] | None = None
+
+
+def _offer_ids_from_gathered_data(gathered: dict, tool_name: str, result_key: str) -> set[str]:
+    offer_ids = set()
+    for call in gathered.get(tool_name, []):
+        results = call.get("results", {})
+        entries = results.get(result_key, []) if isinstance(results, dict) else results
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if isinstance(entry, dict) and isinstance(entry.get("offerId"), str):
+                offer_ids.add(entry["offerId"])
+    return offer_ids
+
+
+def _offer_ids_from_existing_itinerary(itinerary: dict | None, field_name: str) -> set[str]:
+    if not isinstance(itinerary, dict):
+        return set()
+    offer_ids = set()
+    for key, day in itinerary.items():
+        if not key.startswith("day") or not isinstance(day, dict):
+            continue
+        item = day.get(field_name)
+        if isinstance(item, dict) and isinstance(item.get("offerId"), str):
+            offer_ids.add(item["offerId"])
+    return offer_ids
+
+def _validate_and_normalize_itinerary(
+        itinerary: dict,
+        gathered: dict,
+        expected_num_days: int,
+        expected_start_date: date | None = None,
+        existing_itinerary: dict | None = None,
+) -> dict:
+    """Reject malformed or fabricated LLM output before it reaches Java.
+
+    Generation validates against the requested dates. Modification permits a
+    date change, but still requires the same number of continuous daily entries.
+    """
+    if not isinstance(itinerary, dict):
+        raise ValueError("Agent returned an itinerary that is not a JSON object")
+    if expected_num_days <= 0:
+        raise ValueError("Itinerary must contain at least one day")
+
+    expected_day_keys = {f"day{day}" for day in range(1, expected_num_days + 1)}
+    actual_day_keys = {key for key in itinerary if key.startswith("day")}
+    if actual_day_keys != expected_day_keys:
+        raise ValueError("Agent itinerary must contain exactly one sequential day entry per trip day")
+
+    flight_offer_ids = _offer_ids_from_gathered_data(gathered, "search_flights", "flights")
+    hotel_offer_ids = _offer_ids_from_gathered_data(gathered, "search_hotels", "hotels")
+    flight_offer_ids.update(_offer_ids_from_existing_itinerary(existing_itinerary, "flight"))
+    hotel_offer_ids.update(_offer_ids_from_existing_itinerary(existing_itinerary, "hotel"))
+    first_day_date = None
+
+    for day_number in range(1, expected_num_days + 1):
+        key = f"day{day_number}"
+        try:
+            day = ItineraryDay.model_validate(itinerary[key]).model_dump()
+            parsed_date = date.fromisoformat(day["date"])
+        except (ValidationError, TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid {key} in Agent itinerary: {exc}") from exc
+
+        if first_day_date is None:
+            first_day_date = parsed_date
+        expected_date = (expected_start_date or first_day_date).fromordinal(
+            (expected_start_date or first_day_date).toordinal() + day_number - 1
+        )
+        if parsed_date != expected_date:
+            raise ValueError(f"Invalid {key} date: expected {expected_date.isoformat()}")
+
+        for field_name, allowed_offer_ids in (("flight", flight_offer_ids), ("hotel", hotel_offer_ids)):
+            item = day[field_name]
+            if item is None:
+                continue
+            offer_id = item.get("offerId")
+            if not isinstance(offer_id, str) or offer_id not in allowed_offer_ids:
+                raise ValueError(f"Invalid {field_name} offerId in {key}")
+
+        itinerary[key] = day
+
+    total_cost = itinerary.get("totalCost")
+    if isinstance(total_cost, bool) or not isinstance(total_cost, (int, float)) or total_cost < 0:
+        raise ValueError("Agent itinerary must contain a non-negative numeric totalCost")
+    itinerary["totalCost"] = float(total_cost)
+
+    warnings = itinerary.get("warnings", [])
+    if not isinstance(warnings, list) or not all(isinstance(warning, str) for warning in warnings):
+        raise ValueError("Agent itinerary warnings must be a list of strings")
+    itinerary["warnings"] = warnings
+    return itinerary
+
+async def _execute_tool_calls(
+        tool_calls,
+        tool_dispatch: dict[str, Any],
+        call_counts: dict[str, int],
+):
+    """Validate and execute one LLM tool-call turn with bounded capabilities.
+
+    A malformed or failed individual call becomes a tool result for the model to
+    recover from; it must not fail the entire itinerary task. The caller keeps
+    ``call_counts`` for the lifetime of a generation/modification task.
+    """
+    async def run_one(call, func_name: str, func_args: dict):
+        try:
+            args_model = TOOL_ARGUMENT_MODELS.get(func_name)
+            if args_model is None:
+                return call, func_name, func_args, {
+                    "error": {"code": "unknown_tool", "message": f"Tool '{func_name}' is not available."}
+                }
+            validated_args = args_model.model_validate(func_args).model_dump()
+        except (ValidationError, ValueError, TypeError) as exc:
+            return call, func_name, func_args, {
+                "error": {"code": "invalid_tool_arguments", "message": str(exc)}
+            }
+
+        func = tool_dispatch.get(func_name)
+        if func is None:
+            return call, func_name, validated_args, {
+                "error": {"code": "tool_not_allowed", "message": f"Tool '{func_name}' is not allowed in this workflow."}
+            }
+
+        try:
+            return call, func_name, validated_args, await func(**validated_args)
+        except Exception:
+            return call, func_name, validated_args, {
+                "error": {"code": "tool_execution_failed", "message": "The tool request failed. Try another valid query."}
+            }
+
+    scheduled = []
+    immediate_results = []
+    turn_counts: dict[str, int] = {}
+    for index, call in enumerate(tool_calls):
+        func_name = call.function.name
+        try:
+            func_args = json.loads(call.function.arguments)
+            if not isinstance(func_args, dict):
+                raise ValueError("Tool arguments must be a JSON object")
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            immediate_results.append((call, func_name, {}, {
+                "error": {"code": "invalid_tool_arguments", "message": str(exc)}
+            }))
+            continue
+
+        if index >= MAX_TOOL_CALLS_PER_TURN:
+            immediate_results.append((call, func_name, func_args, {
+                "error": {"code": "tool_turn_limit_exceeded", "message": "At most 5 tool calls are allowed per turn."}
+            }))
+            continue
+
+        if sum(call_counts.values()) + sum(turn_counts.values()) >= MAX_TOOL_CALLS_PER_TASK:
+            immediate_results.append((call, func_name, func_args, {
+                "error": {"code": "tool_task_budget_exceeded", "message": "This task has reached its total tool call limit."}
+            }))
+            continue
+        total_calls = call_counts.get(func_name, 0) + turn_counts.get(func_name, 0)
+        if total_calls >= MAX_CALLS_PER_TOOL_PER_TASK:
+            immediate_results.append((call, func_name, func_args, {
+                "error": {"code": "tool_task_limit_exceeded", "message": "This tool has reached its task call limit."}
+            }))
+            continue
+
+        turn_counts[func_name] = turn_counts.get(func_name, 0) + 1
+        scheduled.append((call, func_name, func_args))
+
+    for func_name, count in turn_counts.items():
+        call_counts[func_name] = call_counts.get(func_name, 0) + count
+
+    executed_results = await asyncio.gather(
+        *[run_one(call, func_name, func_args) for call, func_name, func_args in scheduled]
+    )
+    return immediate_results + executed_results
 
 def _build_extraction_prompt() -> str:
     today = date.today()
@@ -138,7 +390,7 @@ async def search_travel_options(trip_requirements: dict) -> dict:
 
     # Build a per-request dispatch table: search_hotels gets guest_nationality
     # pre-bound, so the LLM never needs to know it exists.
-    tool_dispatch = dict(agent_tools.TOOL_FUNCTIONS)
+    tool_dispatch = dict(agent_tools.SEARCH_TOOL_FUNCTIONS)
     tool_dispatch["search_hotels"] = functools.partial(
         agent_tools.search_hotels, guest_nationality=guest_nationality
     )
@@ -147,8 +399,9 @@ async def search_travel_options(trip_requirements: dict) -> dict:
         {"role": "system", "content": _build_search_prompt(resolved_requirements)},
         {"role": "user", "content": "Please search for flight and hotel options for this trip."},
     ]
-    schemas = agent_tools.get_tool_schemas()
+    schemas = agent_tools.get_search_tool_schemas()
     collected_results = {"search_flights": [], "search_hotels": []}
+    tool_call_counts: dict[str, int] = {}
 
     for _ in range(5):
         message = await chat_with_tools(messages, schemas)
@@ -162,7 +415,7 @@ async def search_travel_options(trip_requirements: dict) -> dict:
 
 
         messages.append(message.model_dump(exclude_none=True))
-        tool_results = await _execute_tool_calls(message.tool_calls, tool_dispatch)
+        tool_results = await _execute_tool_calls(message.tool_calls, tool_dispatch, tool_call_counts)
         for call, func_name, func_args, result in tool_results:
             if func_name in collected_results:
                 collected_results[func_name].append({
@@ -439,7 +692,7 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
 
     resolved_requirements = {**trip_requirements, "originCity": origin_code, "destination": dest_code}
 
-    tool_dispatch = dict(agent_tools.TOOL_FUNCTIONS)
+    tool_dispatch = dict(agent_tools.SEARCH_TOOL_FUNCTIONS)
     tool_dispatch["search_hotels"] = functools.partial(
         agent_tools.search_hotels, guest_nationality=guest_nationality
     )
@@ -449,8 +702,9 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
         {"role": "system", "content": _build_gather_prompt(resolved_requirements, num_days)},
         {"role": "user", "content": "Please gather all the data needed for this trip."},
     ]
-    schemas = agent_tools.get_tool_schemas()
+    schemas = agent_tools.get_search_tool_schemas()
     gathered = {"search_flights": [], "search_hotels": [], "search_restaurants": [], "search_attractions": []}
+    tool_call_counts: dict[str, int] = {}
 
     for _ in range(4):  # more tool calls expected than the simpler search_travel_options flow
         message = await chat_with_tools(messages, schemas)
@@ -459,7 +713,7 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
             break
 
         messages.append(message.model_dump(exclude_none=True))
-        tool_results = await _execute_tool_calls(message.tool_calls, tool_dispatch)
+        tool_results = await _execute_tool_calls(message.tool_calls, tool_dispatch, tool_call_counts)
         for call, func_name, func_args, result in tool_results:
             if func_name in gathered:
                 gathered[func_name].append({"args": func_args, "results": result})
@@ -478,6 +732,7 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
     raw_itinerary = await chat_json(assembly_messages)
     itinerary = json.loads(raw_itinerary)
     _ensure_offer_ids(itinerary, gathered)
+    _validate_and_normalize_itinerary(itinerary, gathered, num_days, start)
 
     if debug:
         itinerary["rawSearchData"] = gathered
@@ -621,6 +876,9 @@ The traveler's modification request:
 Determine what needs to change and call the appropriate search tool(s) to
 gather new options. For example:
 - "a cheaper hotel" -> call search_hotels with a lower budget
+- "a more expensive hotel" / "upgrade the hotel" -> call search_hotels with a
+  higher budget (and/or better rating/amenities) so the results actually
+  differ from the current hotel, not just repeat the cheapest option
 - "different restaurant for dinner" -> call search_restaurants, possibly with
   a different cuisine if mentioned
 - "an earlier flight" -> call search_flights again for the same route/date
@@ -658,6 +916,12 @@ exactly as it was in the current itinerary. Recalculate "totalCost" if the
 change affects flight or hotel pricing. Add a note to "warnings" summarizing
 what was changed (e.g. "Hotel changed from X to Y per your request").
 
+The traveler's totalCost figure represents the authoritative USD amount and
+must be recalculated and returned if the change affects flight/hotel pricing.
+Do NOT include or attempt to calculate totalCostSGD, totalCostOriginalUSD,
+or any exchange-rate fields - those are computed by the server after your
+response is validated, not part of what you should return.
+
 Use judgment about meal appropriateness when selecting/keeping restaurant
 choices: heavy dinner-style cuisine is usually not suitable for breakfast.
 
@@ -676,17 +940,31 @@ async def modify_itinerary(current_itinerary: dict, user_request: str,
     """Backlog #10: modifies an existing itinerary based on a natural-language
     change request. Stateless - the caller (Java backend) supplies the current
     itinerary each time; this function does not persist conversation history."""
-    tool_dispatch = dict(agent_tools.TOOL_FUNCTIONS)
+    # generate_itinerary's output no longer carries totalCost (replaced by
+    # totalCostSGD/totalCostOriginalUSD), so the LLM never sees it unless we
+    # backfill it here for the prompts only - current_itinerary itself stays untouched.
+    prompt_itinerary = dict(current_itinerary)
+    original_usd = prompt_itinerary.get("totalCostOriginalUSD")
+    if (
+        "totalCost" not in prompt_itinerary
+        and isinstance(original_usd, (int, float))
+        and not isinstance(original_usd, bool)
+        and original_usd >= 0
+    ):
+        prompt_itinerary["totalCost"] = original_usd
+
+    tool_dispatch = dict(agent_tools.SEARCH_TOOL_FUNCTIONS)
     tool_dispatch["search_hotels"] = functools.partial(
         agent_tools.search_hotels, guest_nationality=guest_nationality
     )
 
     messages = [
-        {"role": "system", "content": _build_modify_prompt(current_itinerary, user_request)},
+        {"role": "system", "content": _build_modify_prompt(prompt_itinerary, user_request)},
         {"role": "user", "content": user_request},
     ]
-    schemas = agent_tools.get_tool_schemas()
+    schemas = agent_tools.get_search_tool_schemas()
     gathered = {"search_flights": [], "search_hotels": [], "search_restaurants": [], "search_attractions": []}
+    tool_call_counts: dict[str, int] = {}
 
     for _ in range(3):
         message = await chat_with_tools(messages, schemas)
@@ -695,7 +973,7 @@ async def modify_itinerary(current_itinerary: dict, user_request: str,
             break
 
         messages.append(message.model_dump(exclude_none=True))
-        tool_results = await _execute_tool_calls(message.tool_calls, tool_dispatch)
+        tool_results = await _execute_tool_calls(message.tool_calls, tool_dispatch, tool_call_counts)
         for call, func_name, func_args, result in tool_results:
             if func_name in gathered:
                 gathered[func_name].append({"args": func_args, "results": result})
@@ -707,12 +985,17 @@ async def modify_itinerary(current_itinerary: dict, user_request: str,
 
     trimmed_data = _trim_for_assembly(gathered)
     assembly_messages = [
-        {"role": "system", "content": _build_modify_assembly_prompt(current_itinerary, user_request, trimmed_data)},
+        {"role": "system", "content": _build_modify_assembly_prompt(prompt_itinerary, user_request, trimmed_data)},
         {"role": "user", "content": "Apply the change now."},
     ]
     raw_itinerary = await chat_json(assembly_messages)
     updated_itinerary = json.loads(raw_itinerary)
     _ensure_offer_ids(updated_itinerary, gathered)
+    current_day_count = sum(
+        1 for key in current_itinerary
+        if key.startswith("day") and isinstance(current_itinerary[key], dict)
+    )
+    _validate_and_normalize_itinerary(updated_itinerary, gathered, current_day_count, existing_itinerary=current_itinerary)
 
     if debug:
         updated_itinerary["rawSearchData"] = gathered

@@ -1,9 +1,8 @@
 """Agent API routes - FastAPI router for agent endpoints"""
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
-from agent.orchestrator import extract_trip_requirements
-from agent.orchestrator import extract_trip_requirements, generate_itinerary, modify_itinerary
+from agent.orchestrator import extract_trip_requirements, generate_itinerary, modify_itinerary, book_full_trip
 from agent.task_manager import create_task, get_task, run_in_background
 
 router = APIRouter(prefix="/api/agent", tags=["Agent"])
@@ -17,12 +16,17 @@ class TripInputRequest(BaseModel):
 class TripRequirementsResponse(BaseModel):
     """Extraction result: proceed to itinerary generation when all fields are present,
     otherwise return clarifyingQuestion for the frontend to display"""
+    # Keep this contract aligned with TripService.agentChat(): all required
+    # itinerary-generation inputs extracted by the LLM must survive FastAPI's
+    # response-model filtering.
+    originCity: Optional[str] = None
     destination: Optional[str] = None
     startDate: Optional[str] = None
     endDate: Optional[str] = None
     budgetTotal: Optional[float] = None
-    preferences: list[str] = []
-    missingFields: list[str] = []
+    preferences: list[str] = Field(default_factory=list)
+    maxHotelCommuteMinutes: Optional[int] = None
+    missingFields: list[str] = Field(default_factory=list)
     clarifyingQuestion: Optional[str] = None
 
 
@@ -72,6 +76,48 @@ async def modify_itinerary_endpoint(request: ModifyItineraryRequest):
         modify_itinerary(request.currentItinerary, request.userRequest, debug=request.debug)
     )
     return {"taskId": task_id}
+
+class BookTripRequest(BaseModel):
+    """Backlog #9: books flight + hotel together for a previously generated/
+    modified itinerary. origin/destination/date and latitude/longitude/
+    checkIn/checkOut/budget are optional but should be supplied whenever
+    available - they let the booking flow proactively re-search and recover
+    if the offerIds in the itinerary have gone stale or expired."""
+    itinerary: dict
+    flightOfferId: str
+    hotelOfferId: str
+    passengerName: str
+    passengerDob: str
+    email: str
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    date: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    checkIn: Optional[str] = None
+    checkOut: Optional[str] = None
+    budget: Optional[float] = None
+    guestNationality: str = "SG"
+
+
+@router.post("/book-trip")
+async def book_trip_endpoint(request: BookTripRequest):
+    """Backlog #9: starts flight+hotel booking as a background task.
+    Returns immediately with a taskId - poll GET /tasks/{taskId} for the result."""
+    task_id = create_task()
+    run_in_background(
+        task_id,
+        book_full_trip(
+            request.itinerary, request.flightOfferId, request.hotelOfferId,
+            request.passengerName, request.passengerDob, request.email,
+            origin=request.origin, destination=request.destination, date_str=request.date,
+            latitude=request.latitude, longitude=request.longitude,
+            check_in=request.checkIn, check_out=request.checkOut,
+            budget=request.budget, guest_nationality=request.guestNationality,
+        )
+    )
+    return {"taskId": task_id}
+
 
 @router.get("/tasks/{task_id}")
 async def get_task_status(task_id: str):

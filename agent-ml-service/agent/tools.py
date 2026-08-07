@@ -112,6 +112,22 @@ def get_tool_schemas() -> list[dict]:
     ]
 
 
+def get_search_tool_schemas() -> list[dict]:
+    """Schemas safe for itinerary planning: no transactional tools are exposed."""
+    return [
+        schema for schema in get_tool_schemas()
+        if schema["function"]["name"].startswith("search_")
+    ]
+
+
+def get_booking_tool_schemas() -> list[dict]:
+    """Schemas reserved for a future explicit booking-confirmation workflow."""
+    return [
+        schema for schema in get_tool_schemas()
+        if schema["function"]["name"].startswith("book_")
+    ]
+
+
 async def search_flights(origin: str, destination: str, date: str) -> list[dict]:
     return await duffel_search_flights(origin, destination, date)
 
@@ -175,4 +191,16 @@ TOOL_FUNCTIONS = {
     "search_attractions": search_attractions,
     "book_flight": book_flight,
     "book_hotel": book_hotel,
+}
+
+# Planning endpoints use this allow-list, so prompt injection or model mistakes
+# cannot invoke real booking operations.
+SEARCH_TOOL_FUNCTIONS = {
+    name: TOOL_FUNCTIONS[name]
+    for name in ("search_flights", "search_hotels", "search_restaurants", "search_attractions")
+}
+
+BOOKING_TOOL_FUNCTIONS = {
+    name: TOOL_FUNCTIONS[name]
+    for name in ("book_flight", "book_hotel")
 }

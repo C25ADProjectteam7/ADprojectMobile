@@ -26,6 +26,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+from fastapi.middleware.cors import CORSMiddleware
+
+# 加在 app = FastAPI(...) 之后
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # demo only - don't ship this to production
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 @app.get("/health")
 async def health_check():
     """Health check — used by Spring Boot and Docker Compose healthcheck"""
