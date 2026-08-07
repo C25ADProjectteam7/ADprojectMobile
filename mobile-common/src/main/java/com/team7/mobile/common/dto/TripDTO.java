@@ -2,6 +2,7 @@ package com.team7.mobile.common.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * Trip response DTO — returned to the mobile frontend.
@@ -16,12 +17,14 @@ public class TripDTO {
     private LocalDate endDate;
     private BigDecimal budgetTotal;
     private String status;
+    /** Creation time — used by the frontend to detect approvals pending > 48h. */
+    private LocalDateTime createdAt;
 
     public TripDTO() {}
 
     public TripDTO(Long id, Long userId, String title, String destination,
                    LocalDate startDate, LocalDate endDate,
-                   BigDecimal budgetTotal, String status) {
+                   BigDecimal budgetTotal, String status, LocalDateTime createdAt) {
         this.id = id;
         this.userId = userId;
         this.title = title;
@@ -30,6 +33,7 @@ public class TripDTO {
         this.endDate = endDate;
         this.budgetTotal = budgetTotal;
         this.status = status;
+        this.createdAt = createdAt;
     }
 
     public Long getId() { return id; }
@@ -40,4 +44,5 @@ public class TripDTO {
     public LocalDate getEndDate() { return endDate; }
     public BigDecimal getBudgetTotal() { return budgetTotal; }
     public String getStatus() { return status; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
 }

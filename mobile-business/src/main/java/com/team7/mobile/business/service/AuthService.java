@@ -39,7 +39,9 @@ public class AuthService {
         );
         User user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        String role = "ROLE_" + user.getRole().name();
+        // Role claim WITHOUT the "ROLE_" prefix — shared JWT contract with the Web group.
+        // Each side's filter adds the prefix when building Spring Security authorities.
+        String role = user.getRole().name();
         String token = jwtTokenProvider.generateToken(request.getUsername(), role);
         return new LoginResponse(token, "Bearer", 86400000L,
                 user.getId(), user.getUsername(), role);

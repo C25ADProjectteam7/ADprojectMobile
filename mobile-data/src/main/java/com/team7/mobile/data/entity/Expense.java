@@ -51,6 +51,18 @@ public class Expense {
     @Column(columnDefinition = "TEXT")
     private String reviewNote;
 
+    /** Approval opinion/comment written by the approver (or web admin). */
+    @Column(columnDefinition = "TEXT")
+    private String approvalOpinion;
+
+    /** Who reviewed the claim — principal from the JWT (username on mobile, email on web). */
+    @Column(length = 100)
+    private String approverName;
+
+    /** Record creation time (same as submission for expenses). */
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
     public Long getId() { return id; }
     public Trip getTrip() { return trip; }
     public void setTrip(Trip trip) { this.trip = trip; }
@@ -70,17 +82,26 @@ public class Expense {
     public void setStatus(ExpenseStatus status) { this.status = status; }
     public LocalDateTime getSubmittedAt() { return submittedAt; }
     public void setSubmittedAt(LocalDateTime submittedAt) { this.submittedAt = submittedAt; }
+    public String getApprovalOpinion() { return approvalOpinion; }
+    public void setApprovalOpinion(String approvalOpinion) { this.approvalOpinion = approvalOpinion; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getReviewedAt() { return reviewedAt; }
+    public void setReviewedAt(LocalDateTime reviewedAt) { this.reviewedAt = reviewedAt; }
+    public String getApproverName() { return approverName; }
+    public void setApproverName(String approverName) { this.approverName = approverName; }
 
     public enum ExpenseCategory {
         FLIGHT, HOTEL, MEAL, TRANSPORT, OTHER
     }
 
     public enum ExpenseStatus {
-        SUBMITTED, APPROVED, REJECTED
+        SUBMITTED, APPROVED, REJECTED, NEEDS_INFO
     }
 
     @PrePersist
     protected void onCreate() {
         if (submittedAt == null) submittedAt = LocalDateTime.now();
+        if (createdAt == null) createdAt = LocalDateTime.now();
     }
 }

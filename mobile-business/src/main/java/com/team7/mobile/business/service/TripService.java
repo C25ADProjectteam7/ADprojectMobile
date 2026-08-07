@@ -304,7 +304,41 @@ public class TripService {
                 trip.getStartDate(),
                 trip.getEndDate(),
                 trip.getBudgetTotal(),
-                trip.getStatus().name()
+                trip.getStatus().name(),
+                trip.getCreatedAt()
         );
+    }
+
+    /**
+     * All trips across the company (approval sync / budget review).
+     * Requires MANAGER / FINANCE / ADMIN role.
+     */
+    public List<TripDTO> getAllTrips() {
+        requireApprovalRole();
+        return tripRepository.findAll().stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Throws if the current principal is not an approver (MANAGER/FINANCE/ADMIN).
+     * Stateless: reads the role from the JWT authorities in the SecurityContext,
+     * NOT from the DB — so tokens issued by the Web group (whose users are not
+     * in our user table) still work for cross-system approval calls.
+     */
+    private void requireApprovalRole() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new IllegalStateException("User not authenticated");
+        }
+        boolean allowed = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_MANAGER")
+                        || a.getAuthority().equals("ROLE_FINANCE")
+                        || a.getAuthority().equals("ROLE_ADMIN"));
+        if (!allowed) {
+            throw new com.team7.mobile.common.exception.ForbiddenException(
+                    "Only MANAGER/FINANCE/ADMIN can access company-wide data");
+        }
     }
 }

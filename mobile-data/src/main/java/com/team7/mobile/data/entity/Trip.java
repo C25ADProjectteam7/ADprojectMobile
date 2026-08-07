@@ -118,6 +118,10 @@ public class Trip {
         this.status = status;
     }
 
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
     public enum TripStatus {
         DRAFT, PLANNED, APPROVED, IN_PROGRESS, COMPLETED, CANCELLED
     }

@@ -155,7 +155,16 @@ jobs:
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
 
       # Trivy — container image CVE scanner (scan BEFORE pushing to registry)
-      # Fixed cache key (default is date-based → re-downloads 940MB DB daily)
+      # NOTE: trivy-action's built-in cache key is HARDCODED to the date
+      # (cache-trivy-<date>, see action.yaml v0.36.0) and it ignores any
+      # cache-key input — so we disable it and manage the DB cache ourselves
+      # with a fixed key to avoid re-downloading the 940MB DB every day.
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/trivy
+          key: cache-trivy-data-${{ runner.os }}-v1
+          restore-keys: cache-trivy-data-${{ runner.os }}-
+
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
@@ -163,7 +172,14 @@ jobs:
           output: "trivy-results.sarif"
           severity: "CRITICAL"
           exit-code: "0"
-          cache-key: cache-trivy-${{ runner.os }}-v1
+          cache: "false"
+          cache-dir: .cache/trivy
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache/trivy
+          key: cache-trivy-data-${{ runner.os }}-v1
 
       # Push only if build + scan steps succeeded
       - uses: docker/build-push-action@v6.19.2
