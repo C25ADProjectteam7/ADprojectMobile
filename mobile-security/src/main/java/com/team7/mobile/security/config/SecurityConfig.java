@@ -31,6 +31,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**",
                                  "/actuator/health", "/uploads/**").permitAll()
+                // Company-wide approval/review endpoints — approvers only
+                .requestMatchers("/api/admin/**").hasAnyRole("MANAGER", "FINANCE", "ADMIN")
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

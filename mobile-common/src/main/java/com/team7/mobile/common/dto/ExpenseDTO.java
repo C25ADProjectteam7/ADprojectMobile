@@ -16,14 +16,20 @@ public class ExpenseDTO {
     private String currency;
     private String description;
     private String receiptUrl;
-    private String status;        // SUBMITTED / APPROVED / REJECTED
+    private String status;        // SUBMITTED / APPROVED / REJECTED / NEEDS_INFO
     private LocalDateTime submittedAt;
+    private LocalDateTime createdAt;
+    /** Approval opinion/comment written by the approver. */
+    private String approvalOpinion;
+    /** Who reviewed the claim (username on mobile / email on web). */
+    private String approverName;
 
     public ExpenseDTO() {}
 
     public ExpenseDTO(Long id, Long tripId, Long userId, String category,
                       BigDecimal amount, String currency, String description,
-                      String receiptUrl, String status, LocalDateTime submittedAt) {
+                      String receiptUrl, String status, LocalDateTime submittedAt,
+                      LocalDateTime createdAt, String approvalOpinion, String approverName) {
         this.id = id;
         this.tripId = tripId;
         this.userId = userId;
@@ -34,6 +40,9 @@ public class ExpenseDTO {
         this.receiptUrl = receiptUrl;
         this.status = status;
         this.submittedAt = submittedAt;
+        this.createdAt = createdAt;
+        this.approvalOpinion = approvalOpinion;
+        this.approverName = approverName;
     }
 
     public Long getId() { return id; }
@@ -46,4 +55,7 @@ public class ExpenseDTO {
     public String getReceiptUrl() { return receiptUrl; }
     public String getStatus() { return status; }
     public LocalDateTime getSubmittedAt() { return submittedAt; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public String getApprovalOpinion() { return approvalOpinion; }
+    public String getApproverName() { return approverName; }
 }

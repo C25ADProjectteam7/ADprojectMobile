@@ -24,6 +24,12 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(userService.getMe()));
     }
 
+    /** Look up any user's basic profile by id (for showing who submitted a trip/expense). */
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<UserDTO>> getUserById(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(userService.getUserById(id)));
+    }
+
     /** Update own profile. */
     @PutMapping("/me")
     public ResponseEntity<ApiResponse<UserDTO>> updateMe(@RequestBody Map<String, String> fields) {
