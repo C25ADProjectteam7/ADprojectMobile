@@ -33,6 +33,18 @@ public class UserService {
         return toDTO(user);
     }
 
+    /**
+     * Look up any user's basic profile by id.
+     * Used by the frontend to display who submitted a trip/expense (name + department).
+     * Any authenticated user can query (company-internal directory).
+     */
+    public UserDTO getUserById(Long id) {
+        requireUser();  // must be authenticated
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", "User not found: " + id, 404));
+        return toDTO(user);
+    }
+
     /** Update own profile (email, phone, department, avatar). */
     public UserDTO updateMe(Map<String, String> fields) {
         User user = requireUser();

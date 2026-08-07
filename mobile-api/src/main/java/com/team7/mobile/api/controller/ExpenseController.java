@@ -60,6 +60,20 @@ public class ExpenseController {
         return ResponseEntity.ok(expenseService.getUserExpenses());
     }
 
+    /**
+     * Edit/correct an expense claim — employee only, own claims only,
+     * and only while status is SUBMITTED or NEEDS_INFO (not yet approved).
+     * Web admin has no edit permission; use /api/admin/expenses/approve|reject instead.
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<ExpenseDTO>> updateExpense(@PathVariable Long id,
+                                                                 @RequestBody ExpenseSubmitRequest request) {
+        ExpenseDTO updated = expenseService.updateExpense(
+                id, request.getCategory(), request.getAmount(),
+                request.getCurrency(), request.getDescription());
+        return ResponseEntity.ok(ApiResponse.success("Claim updated", updated));
+    }
+
     /** Get expense detail */
     @GetMapping("/{id}")
     public ResponseEntity<ExpenseDTO> getExpense(@PathVariable Long id) {

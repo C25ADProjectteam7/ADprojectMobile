@@ -61,6 +61,7 @@ public class Trip {
     public void setBudgetTotal(BigDecimal budgetTotal) { this.budgetTotal = budgetTotal; }
     public TripStatus getStatus() { return status; }
     public void setStatus(TripStatus status) { this.status = status; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
 
     public enum TripStatus {
         DRAFT, PLANNED, APPROVED, IN_PROGRESS, COMPLETED, CANCELLED
