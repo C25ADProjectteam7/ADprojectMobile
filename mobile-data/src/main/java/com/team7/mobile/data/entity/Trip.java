@@ -7,7 +7,8 @@ import java.time.LocalDateTime;
 
 /**
  * Trip entity — maps to trips table.
- * A user can have multiple trips; each trip has itineraries, bookings and expenses.
+ * A user can have multiple trips; each trip has itineraries, bookings and
+ * expenses.
  */
 @Entity
 @Table(name = "trips")
@@ -23,6 +24,9 @@ public class Trip {
 
     @Column(nullable = false, length = 200)
     private String title;
+
+    @Column(length = 100)
+    private String originCity;
 
     @Column(length = 100)
     private String destination;
@@ -46,21 +50,73 @@ public class Trip {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    public Long getId() { return id; }
-    public User getUser() { return user; }
-    public void setUser(User user) { this.user = user; }
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
-    public String getDestination() { return destination; }
-    public void setDestination(String destination) { this.destination = destination; }
-    public LocalDate getStartDate() { return startDate; }
-    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
-    public LocalDate getEndDate() { return endDate; }
-    public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
-    public BigDecimal getBudgetTotal() { return budgetTotal; }
-    public void setBudgetTotal(BigDecimal budgetTotal) { this.budgetTotal = budgetTotal; }
-    public TripStatus getStatus() { return status; }
-    public void setStatus(TripStatus status) { this.status = status; }
+    public Long getId() {
+        return id;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getOriginCity() {
+        return originCity;
+    }
+
+    public void setOriginCity(String originCity) {
+        this.originCity = originCity;
+    }
+
+    public String getDestination() {
+        return destination;
+    }
+
+    public void setDestination(String destination) {
+        this.destination = destination;
+    }
+
+    public LocalDate getStartDate() {
+        return startDate;
+    }
+
+    public void setStartDate(LocalDate startDate) {
+        this.startDate = startDate;
+    }
+
+    public LocalDate getEndDate() {
+        return endDate;
+    }
+
+    public void setEndDate(LocalDate endDate) {
+        this.endDate = endDate;
+    }
+
+    public BigDecimal getBudgetTotal() {
+        return budgetTotal;
+    }
+
+    public void setBudgetTotal(BigDecimal budgetTotal) {
+        this.budgetTotal = budgetTotal;
+    }
+
+    public TripStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(TripStatus status) {
+        this.status = status;
+    }
 
     public enum TripStatus {
         DRAFT, PLANNED, APPROVED, IN_PROGRESS, COMPLETED, CANCELLED

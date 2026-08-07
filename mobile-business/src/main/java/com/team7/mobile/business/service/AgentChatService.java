@@ -1,6 +1,7 @@
 package com.team7.mobile.business.service;
 
 import com.team7.mobile.common.exception.BusinessException;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -28,9 +29,17 @@ public class AgentChatService {
     private final Map<String, Map<String, Object>> tasks = new ConcurrentHashMap<>();
 
     private final TripService tripService;
+    // Self-injected proxy: @Async only takes effect when the annotated method
+    // is invoked through the Spring-managed proxy. Calling executeAsync(...)
+    // directly (this.executeAsync(...)) bypasses the proxy and runs
+    // synchronously, silently defeating the "return taskId immediately"
+    // contract this class exists for. @Lazy avoids a circular-construction
+    // error from injecting the bean into itself.
+    private final AgentChatService self;
 
-    public AgentChatService(TripService tripService) {
+    public AgentChatService(TripService tripService, @Lazy AgentChatService self) {
         this.tripService = tripService;
+        this.self = self;
     }
 
     /**
@@ -43,7 +52,7 @@ public class AgentChatService {
                 "tripId", tripId,
                 "createdAt", System.currentTimeMillis()
         ));
-        executeAsync(taskId, tripId, message);
+        self.executeAsync(taskId, tripId, message);
         return taskId;
     }
 
@@ -57,7 +66,7 @@ public class AgentChatService {
     }
 
     @Async
-    protected void executeAsync(String taskId, Long tripId, String message) {
+    public void executeAsync(String taskId, Long tripId, String message) {
         try {
             Map<String, Object> result = tripService.agentChat(tripId, message);
             tasks.put(taskId, Map.of(
