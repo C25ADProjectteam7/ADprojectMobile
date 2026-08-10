@@ -18,6 +18,25 @@ class InputValidatorTest {
     }
 
     @Test
+    fun blankOptionalEmail_isAccepted() {
+        assertTrue(InputValidator.isValidOptionalEmail(""))
+    }
+
+    @Test
+    fun registrationUsername_respectsBackendLength() {
+        assertTrue(InputValidator.isValidRegistrationUsername("ashley.tan"))
+        assertFalse(InputValidator.isValidRegistrationUsername("ab"))
+        assertFalse(InputValidator.isValidRegistrationUsername("a".repeat(51)))
+    }
+
+    @Test
+    fun registrationPassword_respectsBackendLength() {
+        assertTrue(InputValidator.isValidRegistrationPassword("travel123"))
+        assertFalse(InputValidator.isValidRegistrationPassword("short7"))
+        assertFalse(InputValidator.isValidRegistrationPassword("a".repeat(101)))
+    }
+
+    @Test
     fun positiveBudget_withComma_isAccepted() {
         assertTrue(InputValidator.isPositiveBudget("2,000"))
     }

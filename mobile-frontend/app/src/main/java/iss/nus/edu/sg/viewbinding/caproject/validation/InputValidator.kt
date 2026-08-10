@@ -10,6 +10,18 @@ object InputValidator {
 
     fun isValidEmail(value: String): Boolean = emailPattern.matches(value.trim())
 
+    fun isValidOptionalEmail(value: String): Boolean {
+        return value.isBlank() || isValidEmail(value)
+    }
+
+    fun isValidRegistrationUsername(value: String): Boolean {
+        return value.trim().length in 3..50
+    }
+
+    fun isValidRegistrationPassword(value: String): Boolean {
+        return value.length in 8..100
+    }
+
     fun isPositiveBudget(value: String): Boolean {
         val normalizedValue = value.replace(",", "").trim()
         return normalizedValue.toDoubleOrNull()?.let { it > 0 } == true
