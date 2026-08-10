@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/travel_surface"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/mainFragmentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNavigation"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/bottom_navigation_height"
+        android:background="@color/white"
+        android:elevation="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        app:itemIconSize="22dp"
+        app:itemIconTint="@color/bottom_navigation_tint"
+        app:itemRippleColor="@color/travel_gold_soft"
+        app:itemTextColor="@color/bottom_navigation_tint"
+        app:labelVisibilityMode="labeled"
+        app:menu="@menu/menu_bottom_navigation" />
+
+</LinearLayout>

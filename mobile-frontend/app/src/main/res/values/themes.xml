@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.CAProject" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/travel_gold</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/travel_green</item>
+        <item name="colorSecondaryContainer">@color/travel_gold_soft</item>
+        <item name="colorOnSecondaryContainer">@color/travel_gold_dark</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/white</item>
+        <item name="android:navigationBarColor">@color/white</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">@color/travel_gold</item>
+    </style>
+</resources>
