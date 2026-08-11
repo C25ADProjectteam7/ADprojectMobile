@@ -27,18 +27,46 @@ def test_health_check():
     assert response.json()["status"] == "healthy"
 
 
+def test_model_artifact_loads_successfully():
+    # New: directly instantiate the predictor (not through the route) to
+    # isolate "does the joblib artifact load" from "does the route work".
+    from ml.price_predictor import HotelPricePredictor
+    predictor = HotelPricePredictor()
+    assert predictor._pipeline is not None
+
+
 def test_valid_hotel_request_returns_200():
     response = client.post("/api/ml/predict-hotel-price", json=VALID_REQUEST)
     assert response.status_code == 200
 
 
-def test_response_is_marked_as_mock():
+def test_response_is_marked_as_baseline_not_mock():
+    # CHANGED 2026-08-11: route now serves HotelPricePredictor (trained
+    # baseline), not MockHotelPricePredictor. is_mock must now be False and
+    # model_status must reflect the real model stage.
     response = client.post("/api/ml/predict-hotel-price", json=VALID_REQUEST)
     body = response.json()
-    assert body["is_mock"] is True
-    assert body["model_status"] == "mock"
-    assert body["model_version"] == "mock-v0"
-    assert "mock" in body["message"].lower()
+    assert body["is_mock"] is False
+    assert body["model_status"] == "baseline"
+    assert body["model_version"] == "baseline-rf-v1"
+    assert "baseline" in body["message"].lower()
+
+
+def test_baseline_prediction_is_a_positive_number():
+    # New: model artifact loaded + real inference produced a usable number,
+    # not just "some value" — this is not derivable by hand like the mock
+    # formula was, so we only assert it's a sane positive price.
+    response = client.post("/api/ml/predict-hotel-price", json=VALID_REQUEST)
+    body = response.json()
+    assert isinstance(body["predicted_price_per_night"], float)
+    assert body["predicted_price_per_night"] > 0
+
+
+def test_total_price_equals_nights_times_per_night():
+    response = client.post("/api/ml/predict-hotel-price", json=VALID_REQUEST)
+    body = response.json()
+    expected_total = round(body["predicted_price_per_night"] * body["number_of_nights"], 2)
+    assert body["predicted_total_price"] == expected_total
 
 
 def test_total_price_equals_nights_times_per_night():
@@ -104,20 +132,29 @@ def test_endpoint_appears_in_openapi_schema():
     assert "/api/ml/predict-hotel-price" in paths
 
 
-def test_known_price_formula_produces_exact_value():
-    # Tokyo base 160.0 * 4-star 1.4 * double 1.0 = 224.0/night, 3 nights = 672.0
+def test_baseline_prediction_matches_known_snapshot():
+    # CHANGED 2026-08-11: this used to hand-verify the mock's formula
+    # (base * star_mult * room_mult). A trained model has no such formula to
+    # hand-derive — this is now a regression snapshot of the current
+    # artifact's output for VALID_REQUEST, so a future retrain/artifact swap
+    # that silently changes predictions gets caught. Update this number
+    # deliberately (with a comment why) if the model is intentionally retrained.
     response = client.post("/api/ml/predict-hotel-price", json=VALID_REQUEST)
     body = response.json()
-    assert body["predicted_price_per_night"] == 224.0
-    assert body["predicted_total_price"] == 672.0
+    assert body["predicted_price_per_night"] == 120.65
+    assert body["predicted_total_price"] == 361.95
 
 
-def test_unknown_city_falls_back_to_default_price():
+def test_city_does_not_affect_baseline_prediction():
+    # CHANGED 2026-08-11: the training dataset has no city field (see
+    # docs/ml/hotel-price-baseline-results.md), so city is accepted by the
+    # API but intentionally has zero effect on the baseline model's output.
+    # This test documents that known limitation as actual behavior, not a bug.
+    baseline = client.post("/api/ml/predict-hotel-price", json=VALID_REQUEST).json()
     req = {**VALID_REQUEST, "city": "Nowhereville"}
     response = client.post("/api/ml/predict-hotel-price", json=req)
     body = response.json()
-    # default base 120.0 * 4-star 1.4 * double 1.0 = 168.0/night
-    assert body["predicted_price_per_night"] == 168.0
+    assert body["predicted_price_per_night"] == baseline["predicted_price_per_night"]
 
 
 def test_whitespace_only_city_returns_422():
@@ -127,10 +164,14 @@ def test_whitespace_only_city_returns_422():
 
 
 def test_city_is_trimmed():
+    # CHANGED 2026-08-11: was asserting the mock's exact formula value for
+    # "Tokyo". City no longer affects the prediction at all (see above), so
+    # this now only verifies the trimming/validation behavior in schemas.py
+    # still works (still relevant — schemas.py itself did not change today):
+    # a whitespace-padded city is accepted (200), not rejected.
     req = {**VALID_REQUEST, "city": "  Tokyo  "}
     response = client.post("/api/ml/predict-hotel-price", json=req)
     assert response.status_code == 200
-    assert response.json()["predicted_price_per_night"] == 224.0
 
 
 def test_unsupported_currency_returns_422():

@@ -4,9 +4,15 @@
 
 Predicts an estimated hotel price for a given city, date range, star rating, and
 room type. This document describes the contract as **currently implemented** in
-`agent-ml-service/ml/`. It is the interface Spring Boot (or the Agent) integrates
-against, and it is intended to stay stable when the mock predictor is replaced by
-a real trained model.
+`agent-ml-service/ml/`. It is the interface Spring Boot (`MlController`/`MlClient`)
+integrates against.
+
+**Status as of 2026-08-11:** the endpoint now serves a trained **baseline**
+model (`HotelPricePredictor`, RandomForest — see
+`docs/ml/hotel-price-baseline-results.md`), not the mock. The request/response
+*field names* did not change. What changed is *which fields actually affect
+the prediction* — see "Current Implementation Status" below before assuming
+this behaves like a full city/star-rating-aware model.
 
 ## Endpoint
 
@@ -33,14 +39,14 @@ recompute it.
 
 | Field | Type | Required | Validation | Purpose |
 |---|---|---|---|---|
-| `city` | string | Yes | `min_length=1` after stripping whitespace | City to predict pricing for. Whitespace is trimmed before validation/lookup (so `"   "` is rejected as blank, `"  Tokyo  "` is accepted as `"Tokyo"`). Matched case-insensitively against an internal lookup table; unknown cities fall back to a default base price. |
+| `city` | string | Yes | `min_length=1` after stripping whitespace | City to predict pricing for. Whitespace is trimmed (so `"   "` is rejected as blank, `"  Tokyo  "` is accepted as `"Tokyo"`). **Not currently used by the baseline model** — the training dataset has no city field at all (only 2 fixed Portuguese hotels), so this value is validated but has zero effect on the prediction. |
 | `check_in_date` | date (`YYYY-MM-DD`) | Yes | must be before `check_out_date` | Stay start date. |
 | `check_out_date` | date (`YYYY-MM-DD`) | Yes | must be strictly after `check_in_date` | Stay end date. |
 | `booking_date` | date (`YYYY-MM-DD`) | Yes | must be ≤ `check_in_date` | Date the booking is made; used for lead-time context in a future real model. |
-| `hotel_star_rating` | int | Yes | `1 ≤ x ≤ 5` | Hotel star rating; drives a price multiplier. |
-| `room_type` | string (enum) | Yes | one of `single`, `double`, `twin`, `suite` | Room type; drives a price multiplier. |
-| `number_of_guests` | int | Yes | `x ≥ 1` | Number of guests. Accepted and validated, not currently used in the mock price formula. |
-| `currency` | string | Yes | must be `USD` (case-insensitive; normalized to uppercase) | Currency code. **Mock stage supports USD only** — city base prices in `price_predictor.py` are USD figures with no FX conversion, so any other currency is rejected with 422 rather than being echoed back mislabeled. |
+| `hotel_star_rating` | int | Yes | `1 ≤ x ≤ 5` | Hotel star rating. Accepted and validated, but **not currently used by the baseline model** — the training dataset has no star-rating data at all. |
+| `room_type` | string (enum) | Yes | one of `single`, `double`, `twin`, `suite` | Room type. Accepted and validated, but **not currently used by the baseline model** — the training dataset's room codes have no verified mapping to this enum. |
+| `number_of_guests` | int | Yes | `x ≥ 1` | Number of guests. **Used by the baseline model** — one of the 4 fields that actually affects the prediction. |
+| `currency` | string | Yes | must be `USD` (case-insensitive; normalized to uppercase) | Currency code. Only `USD` accepted — training data has no confirmed currency (presumed EUR, unconverted), so anything else is rejected with 422 rather than mislabeled. |
 
 Cross-field validation (enforced via a Pydantic `model_validator`):
 - `check_out_date` must be strictly after `check_in_date`.
@@ -56,10 +62,10 @@ Any violation returns **HTTP 422** with FastAPI's standard validation error body
 | `predicted_total_price` | float | Estimated total price for the full stay, in `currency`. |
 | `number_of_nights` | int | Number of nights between check-in and check-out. |
 | `currency` | string | Echo of the request's `currency`. No conversion applied. |
-| `model_status` | string enum (`mock` \| `baseline` \| `trained`) | What kind of predictor produced this result. Currently always `"mock"`. |
-| `model_version` | string | Identifier for the predictor implementation. Currently always `"mock-v0"`. |
-| `is_mock` | boolean | `true` when the result is not from a trained ML model. Currently always `true`. |
-| `message` | string | Human-readable disclaimer. Currently states this is a mock result and must not be used for real booking decisions. |
+| `model_status` | string enum (`mock` \| `baseline` \| `trained`) | What kind of predictor produced this result. Currently always `"baseline"`. |
+| `model_version` | string | Identifier for the predictor implementation. Currently always `"baseline-rf-v1"`. |
+| `is_mock` | boolean | `true` when the result is not from a trained ML model. Currently always `false`. |
+| `message` | string | Human-readable disclaimer. Currently states which input fields the baseline model does and does not actually use — always read this before trusting a result. |
 
 ## Example Request
 
@@ -83,16 +89,20 @@ Content-Type: application/json
 
 ```json
 {
-  "predicted_price_per_night": 224.0,
-  "predicted_total_price": 672.0,
+  "predicted_price_per_night": 120.65,
+  "predicted_total_price": 361.95,
   "number_of_nights": 3,
   "currency": "USD",
-  "model_status": "mock",
-  "model_version": "mock-v0",
-  "is_mock": true,
-  "message": "MOCK prediction only — based on fixed lookup tables, not a trained model. Do not use this result for real booking decisions."
+  "model_status": "baseline",
+  "model_version": "baseline-rf-v1",
+  "is_mock": false,
+  "message": "BASELINE model (RandomForest trained on the Hotel Booking Demand dataset). Only lead time, stay length, guest count, and arrival month currently affect this prediction. city, room_type, and other inputs are accepted by the API but NOT used by this model — the training dataset has no city or star-rating data, and room_type has no verified mapping to the dataset's room codes. Do not treat this as reflecting real city or room-type price differences."
 }
 ```
+
+This is a real, verified response (captured from a live run on 2026-08-11, not
+hand-computed) — note the numbers are notably lower than the old mock example
+(224.0/672.0) because the underlying data/model changed, not because of a bug.
 
 ## Example Validation Error (422)
 
@@ -131,17 +141,28 @@ schema has been implemented on top of it.
 
 ## Current Implementation Status
 
-- The endpoint is served by `MockHotelPricePredictor`
-  (`agent-ml-service/ml/price_predictor.py`): a **deterministic, rule-based**
-  lookup (city base price × star-rating multiplier × room-type multiplier).
-  It is not a trained machine learning model.
-- **There is no real trained model yet.** No dataset has been selected or
-  used for training (see `docs/ml/hotel-price-dataset-requirements.md`).
+- The endpoint is served by `HotelPricePredictor`
+  (`agent-ml-service/ml/price_predictor.py`): loads a trained
+  `RandomForestRegressor` pipeline (`models/hotel_price_baseline.joblib`)
+  and predicts ADR (Average Daily Rate) as the per-night price. **This is a
+  real trained model**, not a lookup table — but a first baseline, trained
+  on a single dataset with real gaps (see below).
+- **Only 4 of the 8 request fields actually influence the prediction:**
+  `check_in_date`/`check_out_date` (→ lead time, stay length, arrival month)
+  and `number_of_guests`. `city`, `hotel_star_rating`, and `room_type` are
+  validated but have **zero effect** on the output — the training dataset
+  (Hotel Booking Demand, Antonio/Almeida/Nunes 2019) has no city, star
+  rating, or comparable room-type data. See
+  `docs/ml/hotel-price-baseline-results.md` for the full feature-availability
+  analysis.
+- `MockHotelPricePredictor` still exists in the same file for reference/testing
+  but is no longer wired into the live route.
 - `model_status`, `model_version`, and `is_mock` exist specifically so callers
-  can detect and surface that a result is not a real prediction. Callers
-  (Spring Boot UI, Agent) **must not** present this result to end users as a
-  genuine ML forecast — the `message` field should be surfaced or the
-  `is_mock` flag checked before use.
+  can detect what produced a result. `is_mock=false` now means "this came from
+  a trained model" — it does **not** mean "this uses every input field
+  meaningfully." Callers should surface the `message` field, which spells out
+  the current limitation explicitly, rather than assume `is_mock=false` means
+  full-fidelity.
 
 ## Calling the API (Spring Boot / Agent)
 
@@ -152,21 +173,21 @@ endpoint over plain HTTP (e.g. `http://agent-ml:8000/api/ml/predict-hotel-price`
 (Spring `RestTemplate`/`WebClient`, or the Python Agent's own HTTP layer) can
 call it with a standard JSON POST.
 
-**No specific caller has been finalized or hard-coded.** This contract is
-written so it can be consumed by Spring Boot's business layer, by the Agent
-orchestrator, or by both, without any change to the endpoint itself.
+**Update (2026-08-11):** Spring Boot now has a real caller — `MlClient.java`
+(`mobile-business/.../agent/`) + `MlController.java`
+(`mobile-api/.../controller/`), which proxy `POST /api/ml/predict-hotel-price`
+for the Android app, converting camelCase to snake_case at the boundary. The
+Agent (`agent-ml-service/agent/`) is still unimplemented and does not call
+this yet.
 
-## Future Real-Model Replacement
+## Future Improvement (Baseline → Fuller Model)
 
-Per `price_predictor.py`'s design:
-
-1. Train a model and persist it (e.g. `joblib.dump(model, "price_predictor.joblib")`).
-2. Implement `RealHotelPricePredictor` with the same `predict(request: HotelPriceRequest) -> HotelPriceResponse` interface as `MockHotelPricePredictor`.
-3. Swap the import **and** the `_predictor = MockHotelPricePredictor()` instantiation
-   in `ml/routes.py` to use `RealHotelPricePredictor` instead.
-4. This is intended as a small, contained change — the endpoint path and most
-   request/response field names should stay stable — but it is a target, not a
-   guarantee. A real model may need `SUPPORTED_CURRENCIES` in `schemas.py`
-   widened (currently USD-only because the mock has no FX conversion), or
-   additional preprocessing/metadata fields. Only `model_status`,
-   `model_version`, and `is_mock` are guaranteed to change to reflect a real model.
+The mock→baseline swap already happened and validated the design in
+`price_predictor.py`: the route (`ml/routes.py`) only needed its predictor
+import and instantiation changed, nothing in `ml/schemas.py` or the endpoint
+path. The next real gap is **data, not code**: to make `city` and
+`hotel_star_rating` actually affect predictions, a second dataset (or a
+richer one) with that information would need to be sourced and reconciled
+with the current features — see the "Recommendation" section of
+`docs/ml/hotel-price-dataset-shortlist.md` for why that was deliberately
+deferred past this baseline.

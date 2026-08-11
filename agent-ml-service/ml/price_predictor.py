@@ -18,7 +18,14 @@ The predictor is intentionally separated from the route so that swapping the
 implementation is a small, contained change rather than touching the API layer.
 """
 
+from pathlib import Path
+
+import joblib
+import pandas as pd
+
 from ml.schemas import HotelPriceRequest, HotelPriceResponse
+
+MODEL_ARTIFACT_PATH = Path(__file__).resolve().parent.parent / "models" / "hotel_price_baseline.joblib"
 
 # Base prices per city, in USD — deterministic lookup, not ML.
 # schemas.py currently restricts requests to currency="USD" (mock has no FX
@@ -78,4 +85,77 @@ class MockHotelPricePredictor:
                 "MOCK prediction only — based on fixed lookup tables, not a trained model. "
                 "Do not use this result for real booking decisions."
             ),
+        )
+
+
+# Training features not derivable from HotelPriceRequest at all (no city/
+# room-type/etc crosswalk exists — see docs/ml/hotel-price-baseline-results.md).
+# Held at the training set's most common (mode) value rather than invented.
+# This means predictions currently do NOT vary by city or room_type.
+_DEFAULT_HOTEL = "City Hotel"
+_DEFAULT_ROOM_CODE = "A"
+_DEFAULT_MARKET_SEGMENT = "Online TA"
+_DEFAULT_DEPOSIT_TYPE = "No Deposit"
+_DEFAULT_CUSTOMER_TYPE = "Transient"
+
+_BASELINE_LIMITATION_MESSAGE = (
+    "BASELINE model (RandomForest trained on the Hotel Booking Demand dataset). "
+    "Only lead time, stay length, guest count, and arrival month currently affect "
+    "this prediction. city, room_type, and other inputs are accepted by the API "
+    "but NOT used by this model — the training dataset has no city or star-rating "
+    "data, and room_type has no verified mapping to the dataset's room codes. "
+    "Do not treat this as reflecting real city or room-type price differences."
+)
+
+
+class HotelPricePredictor:
+    """
+    Baseline predictor — loads a trained scikit-learn Pipeline
+    (preprocessing + RandomForestRegressor) from models/hotel_price_baseline.joblib
+    and predicts ADR (Average Daily Rate) as a proxy for price per night.
+
+    See docs/ml/hotel-price-baseline-results.md for training details,
+    feature availability vs. this API's schema, and known limitations.
+    """
+
+    MODEL_STATUS = "baseline"
+    MODEL_VERSION = "baseline-rf-v1"
+
+    def __init__(self, model_path: Path = MODEL_ARTIFACT_PATH):
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"Model artifact not found at {model_path}. "
+                "Run agent-ml-service/training/train_baseline.py to generate it."
+            )
+        self._pipeline = joblib.load(model_path)
+
+    def predict(self, request: HotelPriceRequest) -> HotelPriceResponse:
+        nights = (request.check_out_date - request.check_in_date).days
+        lead_time = (request.check_in_date - request.booking_date).days
+
+        features = pd.DataFrame([{
+            "lead_time": lead_time,
+            "nights": nights,
+            "number_of_guests": request.number_of_guests,
+            "arrival_month_num": request.check_in_date.month,
+            "hotel": _DEFAULT_HOTEL,
+            "reserved_room_type": _DEFAULT_ROOM_CODE,
+            "market_segment": _DEFAULT_MARKET_SEGMENT,
+            "deposit_type": _DEFAULT_DEPOSIT_TYPE,
+            "customer_type": _DEFAULT_CUSTOMER_TYPE,
+        }])
+
+        predicted_adr = float(self._pipeline.predict(features)[0])
+        price_per_night = round(max(predicted_adr, 0.0), 2)
+        total = round(price_per_night * nights, 2)
+
+        return HotelPriceResponse(
+            predicted_price_per_night=price_per_night,
+            predicted_total_price=total,
+            number_of_nights=nights,
+            currency=request.currency,
+            model_status=self.MODEL_STATUS,
+            model_version=self.MODEL_VERSION,
+            is_mock=False,
+            message=_BASELINE_LIMITATION_MESSAGE,
         )

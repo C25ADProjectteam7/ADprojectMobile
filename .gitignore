@@ -40,6 +40,11 @@ __pycache__/
 venv/
 env/
 
+# ===== ML raw training data (too large / re-downloadable, not source) =====
+# NOTE: agent-ml-service/models/*.joblib is intentionally NOT ignored —
+# the FastAPI service loads it at runtime; it must ship with the repo.
+agent-ml-service/training/data/
+
 # ===== Docker =====
 docker-compose.override.yml
 

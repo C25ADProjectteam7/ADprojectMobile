@@ -2,11 +2,13 @@
 
 from fastapi import APIRouter
 from ml.schemas import HotelPriceRequest, HotelPriceResponse
-from ml.price_predictor import MockHotelPricePredictor
+from ml.price_predictor import HotelPricePredictor
 
 router = APIRouter(prefix="/api/ml", tags=["Machine Learning"])
 
-_predictor = MockHotelPricePredictor()
+# MockHotelPricePredictor remains in ml/price_predictor.py for tests/fallback
+# reference, but the live route now serves the trained baseline artifact.
+_predictor = HotelPricePredictor()
 
 
 @router.post("/predict-hotel-price", response_model=HotelPriceResponse)
@@ -14,9 +16,10 @@ def predict_hotel_price(request: HotelPriceRequest) -> HotelPriceResponse:
     """
     Predict hotel price per night and total stay cost.
 
-    **Current status:** mock implementation — returns deterministic rule-based
-    estimates. Replace MockHotelPricePredictor with a trained model when available.
-    Results must not be used for real booking decisions.
+    **Current status:** baseline model (RandomForest trained on the Hotel
+    Booking Demand dataset) — see docs/ml/hotel-price-baseline-results.md.
+    city and room_type are accepted but not yet used by the model; see the
+    response `message` field for the exact current limitation.
     """
     return _predictor.predict(request)
 

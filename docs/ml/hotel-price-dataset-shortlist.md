@@ -1,10 +1,17 @@
 # Hotel Price Dataset Shortlist
 
-Research only — no data downloaded in bulk, no scraping performed, no model
-trained, no code changed. This document evaluates candidate datasets against
-the fields already defined in `HotelPriceRequest`/`HotelPriceResponse`
-(`agent-ml-service/ml/schemas.py`) and the criteria in
-`docs/ml/hotel-price-dataset-requirements.md`.
+Research only at the time this document was written — no data downloaded in
+bulk, no scraping performed, no model trained, no code changed. This document
+evaluates candidate datasets against the fields already defined in
+`HotelPriceRequest`/`HotelPriceResponse` (`agent-ml-service/ml/schemas.py`)
+and the criteria in `docs/ml/hotel-price-dataset-requirements.md`.
+
+**Update (2026-08-11):** The Primary candidate below was downloaded, loaded,
+and used to train a first baseline. Results, the confirmed V1 feature
+decision, and real data-quality findings (not just paper-reading) are in
+`docs/ml/hotel-price-baseline-results.md`. The recommendation below held up
+against real data — city/star_rating are genuinely absent, not just
+under-documented.
 
 **Verification method note:** each candidate was checked against its primary
 source where one exists — a peer-reviewed data article, the platform's own
