@@ -16,9 +16,15 @@ API endpoints:
 """
 
 import asyncio
+import logging
 from fastapi import FastAPI
 from agent.routes import router as agent_router
 from agent.task_manager import start_cleanup_loop
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = FastAPI(
     title="Team7 Agent & ML Service",

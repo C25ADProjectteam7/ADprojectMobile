@@ -12,6 +12,7 @@ public class TripDTO {
     private Long id;
     private Long userId;
     private String title;
+    private String originCity;
     private String destination;
     private LocalDate startDate;
     private LocalDate endDate;
@@ -22,12 +23,13 @@ public class TripDTO {
 
     public TripDTO() {}
 
-    public TripDTO(Long id, Long userId, String title, String destination,
+    public TripDTO(Long id, Long userId, String title, String originCity, String destination,
                    LocalDate startDate, LocalDate endDate,
                    BigDecimal budgetTotal, String status, LocalDateTime createdAt) {
         this.id = id;
         this.userId = userId;
         this.title = title;
+        this.originCity = originCity;
         this.destination = destination;
         this.startDate = startDate;
         this.endDate = endDate;
@@ -39,6 +41,7 @@ public class TripDTO {
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
     public String getTitle() { return title; }
+    public String getOriginCity() { return originCity; }
     public String getDestination() { return destination; }
     public LocalDate getStartDate() { return startDate; }
     public LocalDate getEndDate() { return endDate; }

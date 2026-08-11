@@ -2,15 +2,26 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
-from agent.orchestrator import extract_trip_requirements, generate_itinerary, modify_itinerary, book_full_trip
+from agent.orchestrator import (
+    extract_trip_requirements, generate_itinerary, modify_itinerary, book_full_trip,
+    summarize_conversation,
+)
 from agent.task_manager import create_task, get_task, run_in_background
 
 router = APIRouter(prefix="/api/agent", tags=["Agent"])
 
 
+class ConversationTurn(BaseModel):
+    """One prior turn of a trip's agent-chat conversation, oldest first."""
+    role: str  # "user" or "assistant"
+    content: str
+
+
 class TripInputRequest(BaseModel):
     """Raw natural-language input from the user"""
     userInput: str
+    conversationHistory: list[ConversationTurn] = Field(default_factory=list)
+    conversationSummary: Optional[str] = None
 
 
 class TripRequirementsResponse(BaseModel):
@@ -36,8 +47,26 @@ async def extract_requirements(request: TripInputRequest):
     The Java backend calls this endpoint with the user's raw input text and
     receives structured fields back; if missingFields is non-empty, display
     clarifyingQuestion to the user and continue the conversation."""
-    result = await extract_trip_requirements(request.userInput)
+    history = [turn.model_dump() for turn in request.conversationHistory]
+    result = await extract_trip_requirements(request.userInput, history, request.conversationSummary)
     return result
+
+
+class SummarizeConversationRequest(BaseModel):
+    """Compresses conversation turns that have aged out of the recent verbatim
+    window into a short running summary - see orchestrator.summarize_conversation()."""
+    previousSummary: Optional[str] = None
+    turns: list[ConversationTurn]
+
+
+@router.post("/summarize-conversation")
+async def summarize_conversation_endpoint(request: SummarizeConversationRequest):
+    """Sync, not a background task - summarizing a handful of short chat
+    turns is fast, unlike itinerary generation/modification/booking."""
+    summary = await summarize_conversation(
+        request.previousSummary, [turn.model_dump() for turn in request.turns]
+    )
+    return {"summary": summary}
 
 class GenerateItineraryRequest(BaseModel):
     """Full trip requirements needed to generate a complete itinerary"""

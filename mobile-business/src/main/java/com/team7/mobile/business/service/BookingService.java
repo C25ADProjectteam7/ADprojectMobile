@@ -1,6 +1,8 @@
 package com.team7.mobile.business.service;
 
 import com.team7.mobile.common.dto.BookingDTO;
+import com.team7.mobile.common.exception.ForbiddenException;
+import com.team7.mobile.common.exception.ResourceNotFoundException;
 import com.team7.mobile.data.entity.Booking;
 import com.team7.mobile.data.entity.Trip;
 import com.team7.mobile.data.entity.User;
@@ -41,9 +43,9 @@ public class BookingService {
             throw new IllegalStateException("User not authenticated");
         }
         Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new RuntimeException("Trip not found: " + tripId));
+                .orElseThrow(() -> new ResourceNotFoundException("Trip", tripId));
         if (!trip.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Not authorized to book for trip: " + tripId);
+            throw new ForbiddenException("Not authorized to book for trip: " + tripId);
         }
 
         Booking booking = new Booking();
@@ -52,7 +54,11 @@ public class BookingService {
         booking.setType(Booking.BookingType.valueOf(type));
         booking.setBookingRef(bookingRef);
         booking.setPrice(price);
-        booking.setCurrency(currency != null ? currency : "CNY");
+        // Matches Booking's own entity-level default (Booking.java) and the
+        // USD convention already established for Duffel/LiteAPI-sourced
+        // bookings in TripService.persistBookingLeg() - "CNY" here would
+        // silently mislabel a USD amount whenever the caller omits currency.
+        booking.setCurrency(currency != null ? currency : "USD");
         booking.setStatus(Booking.BookingStatus.CONFIRMED);
 
         booking = bookingRepository.save(booking);
@@ -89,7 +95,7 @@ public class BookingService {
     private Booking findOwnedBooking(Long bookingId) {
         Long userId = currentUser.getId();
         return bookingRepository.findByIdAndUserId(bookingId, userId)
-                .orElseThrow(() -> new RuntimeException("Booking not found: " + bookingId));
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
     }
 
     private BookingDTO toDTO(Booking booking) {

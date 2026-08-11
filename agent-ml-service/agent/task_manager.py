@@ -14,12 +14,24 @@ actual result (e.g. into its trips/bookings tables) once a task completes -
 this store cleans up old entries automatically so this service's memory
 doesn't grow unbounded.
 """
+import logging
 import uuid
 import asyncio
 from datetime import datetime, timezone, timedelta
 
+logger = logging.getLogger(__name__)
+
 _tasks: dict[str, dict] = {}
 _background_tasks: set = set()
+
+# Shown to the API caller when a background task fails. Deliberately generic -
+# the real exception (which may embed request URLs, library internals, or
+# other details not meant for an external client) goes to the server log via
+# logger.exception() instead, keyed by task_id for cross-referencing.
+GENERIC_FAILURE_MESSAGE = (
+    "The request could not be completed due to an internal error. "
+    "Please try again; if this persists, contact support and reference this taskId."
+)
 
 TASK_RETENTION_MINUTES = 60  # how long a completed/failed task stays queryable
 
@@ -98,8 +110,12 @@ def run_in_background(task_id: str, coro) -> None:
         try:
             result = await coro
             _complete_task(task_id, result)
-        except Exception as e:
-            _fail_task(task_id, str(e))
+        except Exception:
+            # Full exception (message, type, traceback) goes to the server log
+            # only - see GENERIC_FAILURE_MESSAGE for why the task's "error"
+            # field itself stays generic.
+            logger.exception("Background task %s failed", task_id)
+            _fail_task(task_id, GENERIC_FAILURE_MESSAGE)
         finally:
             _background_tasks.discard(task)
 

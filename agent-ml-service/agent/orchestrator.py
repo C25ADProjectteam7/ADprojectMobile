@@ -17,16 +17,35 @@ modify_itinerary flow:
 import json
 import asyncio
 import functools
+import logging
 from datetime import date, datetime, timezone
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from agent.deepseek_client import chat_json, chat_with_tools
+import config
+from agent.deepseek_client import chat_completion, chat_json, chat_with_tools
 from agent import tools as agent_tools
 from agent.duffel_client import resolve_city_to_iata, resolve_city_to_country_code
 from agent.exchange_rate_client import get_usd_to_sgd_rate
 
+logger = logging.getLogger(__name__)
 
 REQUIRED_FIELDS = ["originCity", "destination", "startDate", "endDate", "budgetTotal"]
+
+# How many times to ask the LLM to (re-)assemble the itinerary JSON before
+# giving up. Assembly is a stochastic LLM call - it occasionally garbles or
+# fabricates an offerId despite the prompt's explicit instruction to preserve
+# it verbatim, which _validate_and_normalize_itinerary correctly rejects
+# rather than let a bad offerId reach booking. Retrying the same assembly
+# prompt against the same already-gathered data often succeeds on a second
+# attempt, without silently accepting output we can't trust.
+ASSEMBLY_MAX_ATTEMPTS = 2
+
+# Same rationale as ASSEMBLY_MAX_ATTEMPTS: chat_json's "JSON mode" from
+# DeepSeek is not an airtight guarantee of well-formed JSON (confirmed live -
+# extract_trip_requirements has thrown json.JSONDecodeError from production
+# traffic), so a bare json.loads() with no retry turns an occasional
+# malformed response into a hard 500 for the whole extraction call.
+EXTRACTION_MAX_ATTEMPTS = 2
 
 MAX_TOOL_CALLS_PER_TURN = 5
 MAX_TOOL_CALLS_PER_TASK = 8
@@ -291,12 +310,22 @@ async def _execute_tool_calls(
     )
     return immediate_results + executed_results
 
-def _build_extraction_prompt() -> str:
+def _build_extraction_prompt(conversation_summary: str | None = None) -> str:
     today = date.today()
     today_str = today.isoformat()
     weekday_name = today.strftime("%A")
+    summary_section = (
+        f"""
+Summary of earlier parts of this conversation (older turns not shown verbatim
+below - this summary is your only record of them, treat facts in it as
+already established, same as if the user had just said them):
+{conversation_summary}
+"""
+        if conversation_summary else ""
+    )
     return f"""You are a business travel planning assistant. Extract structured trip
 requirements from the user's free-text description.
+{summary_section}
 
 Today's date is {today_str}, which is a {weekday_name}. When the user mentions
 relative time expressions such as "next Monday", "the 15th of next month", or
@@ -331,20 +360,96 @@ Extract the following fields and return them as JSON:
 - clarifyingQuestion: string - if missingFields is non-empty, write one natural
   follow-up question asking for the missing information; null if all fields are complete
 
+If earlier turns of this conversation are included above, treat this as an
+ongoing exchange, not an isolated message: combine information already given
+in earlier turns with whatever the latest message adds or changes, rather
+than re-asking for something already answered. The latest user message is
+still what you are directly responding to.
+
 Return ONLY the JSON object, with no additional explanation or text.
 """
 
 
-async def extract_trip_requirements(user_input: str) -> dict:
+async def extract_trip_requirements(
+        user_input: str,
+        conversation_history: list[dict] | None = None,
+        conversation_summary: str | None = None,
+) -> dict:
     """Backlog #4: extract trip requirements from free text, generate a clarifying
-    question when required fields are missing"""
+    question when required fields are missing.
+
+    conversation_history: prior turns of this trip's agent-chat conversation,
+    oldest first, as [{"role": "user"|"assistant", "content": "..."}, ...].
+    Passed as real prior messages (not folded into the system prompt) so the
+    model sees the actual back-and-forth - lets a follow-up like "make it
+    3000 instead" resolve against a destination/date mentioned two turns ago,
+    instead of every call being evaluated in isolation. Trimmed to the most
+    recent config.MAX_CONVERSATION_HISTORY turns to bound prompt size.
+
+    conversation_summary: compressed summary of turns older than what
+    conversation_history covers (see summarize_conversation()) - the caller
+    is expected to have already dropped those older turns from
+    conversation_history to bound prompt size, so this is the only remaining
+    trace of anything established further back than the recent window."""
+    messages = [{"role": "system", "content": _build_extraction_prompt(conversation_summary)}]
+    for turn in (conversation_history or [])[-config.MAX_CONVERSATION_HISTORY:]:
+        role = "assistant" if turn.get("role", "").lower() == "assistant" else "user"
+        messages.append({"role": role, "content": turn.get("content", "")})
+    messages.append({"role": "user", "content": user_input})
+
+    last_error: Exception | None = None
+    for attempt in range(1, EXTRACTION_MAX_ATTEMPTS + 1):
+        raw = await chat_json(messages)
+        try:
+            return json.loads(raw)
+        except ValueError as exc:
+            last_error = exc
+            logger.warning(
+                "Extraction attempt %d/%d failed: %s",
+                attempt, EXTRACTION_MAX_ATTEMPTS, exc,
+            )
+    raise last_error
+
+
+def _build_summary_prompt(previous_summary: str | None, turns: list[dict]) -> str:
+    history_text = "\n".join(
+        f"{turn.get('role', 'user').upper()}: {turn.get('content', '')}" for turn in turns
+    )
+    prior_section = (
+        f"Existing summary of even earlier turns (fold this in, don't drop it):\n{previous_summary}\n\n"
+        if previous_summary else ""
+    )
+    return f"""You are compressing an older portion of a business-trip-planning
+conversation into a short summary, so a future prompt can rely on this
+summary instead of re-reading the full conversation.
+
+{prior_section}Additional earlier turns to fold in (oldest first):
+{history_text}
+
+Write a single concise paragraph (2-4 sentences) capturing any concrete facts
+mentioned - origin city, destination, dates, budget, preferences - and any
+decisions made (e.g. "an itinerary was generated", "the traveler asked to
+switch to a cheaper hotel"). Do not include filler, pleasantries, or your own
+commentary. If an existing summary was given above, merge it with the new
+turns into ONE updated summary - do not produce two separate summaries or
+say "in addition to the previous summary".
+
+Return ONLY the summary paragraph, no preamble, no quotes around it."""
+
+
+async def summarize_conversation(previous_summary: str | None, turns: list[dict]) -> str:
+    """Compresses conversation turns that have fallen outside the recent
+    verbatim window (see extract_trip_requirements's conversation_history
+    param) into a short running summary, so facts established many turns ago
+    aren't simply lost once they age out of that window. Incremental: the
+    caller passes the existing summary (if any) plus only the NEWLY-dropped
+    turns since it was last computed, not the entire history every time."""
     messages = [
-        {"role": "system", "content": _build_extraction_prompt()},
-        {"role": "user", "content": user_input},
+        {"role": "system", "content": _build_summary_prompt(previous_summary, turns)},
+        {"role": "user", "content": "Summarize now."},
     ]
-    raw = await chat_json(messages)
-    result = json.loads(raw)  # DeepSeek JSON mode guarantees valid JSON
-    return result
+    summary = await chat_completion(messages, temperature=0.2)
+    return summary.strip()
 
 
 def _build_search_prompt(trip_requirements: dict) -> str:
@@ -640,12 +745,21 @@ async def _evaluate_hotel_convenience(itinerary: dict, threshold_minutes: int = 
 
 
 def _ensure_offer_ids(itinerary: dict, gathered: dict) -> None:
-    """Backlog #8/#9 safety net: the LLM sometimes drops the offerId field
-    when assembling the itinerary JSON, even when explicitly instructed to
-    preserve it. Since offerId is required for booking, this repairs any
-    missing offerId by looking up the matching flight/hotel (by name/flight
-    number) in the raw search data, rather than relying solely on prompt
-    compliance."""
+    """Backlog #8/#9 safety net: the LLM sometimes drops - or, for LiteAPI's
+    ~1300-1400 character opaque hotel offerId blobs, subtly corrupts or
+    truncates - the offerId field when assembling the itinerary JSON, even
+    when explicitly instructed to preserve it verbatim. Confirmed via direct
+    testing: the same request can come back with a single flipped character
+    or a truncated string despite the hotel name being copied correctly, i.e.
+    this isn't a rare edge case - long opaque tokens are just not something
+    an LLM reliably reproduces character-for-character.
+
+    Since offerId is required for booking, this ALWAYS overwrites it by
+    looking up the matching flight/hotel (by flight number/hotel name) in the
+    raw search data - trusting our own gathered data over whatever offerId
+    string the LLM produced, rather than only patching it in when the field
+    is missing outright (which would leave a corrupted-but-present value
+    uncorrected)."""
     hotel_offers = {}
     for call in gathered.get("search_hotels", []):
         for h in call["results"].get("hotels", []):
@@ -660,11 +774,46 @@ def _ensure_offer_ids(itinerary: dict, gathered: dict) -> None:
         if not key.startswith("day") or not isinstance(day, dict):
             continue
         hotel = day.get("hotel")
-        if hotel and not hotel.get("offerId") and hotel.get("name") in hotel_offers:
+        if hotel and hotel.get("name") in hotel_offers:
             hotel["offerId"] = hotel_offers[hotel["name"]]
         flight = day.get("flight")
-        if flight and not flight.get("offerId") and flight.get("flightNumber") in flight_offers:
+        if flight and flight.get("flightNumber") in flight_offers:
             flight["offerId"] = flight_offers[flight["flightNumber"]]
+
+async def _assemble_and_validate_itinerary(
+        assembly_messages: list[dict],
+        gathered: dict,
+        expected_num_days: int,
+        expected_start_date: date | None = None,
+        existing_itinerary: dict | None = None,
+) -> dict:
+    """Calls the assembly LLM, repairs/validates its output, and retries the
+    assembly call itself (not just a repair pass) up to ASSEMBLY_MAX_ATTEMPTS
+    times if anything about the result is unusable - see ASSEMBLY_MAX_ATTEMPTS
+    for why. This includes malformed JSON (json.loads failing) and a
+    well-formed-but-wrong-shape response (e.g. a JSON array instead of an
+    object), not just _validate_and_normalize_itinerary's own checks - all of
+    it is "this attempt's output can't be used, try again", not "the whole
+    task should crash" (json.JSONDecodeError is itself a ValueError
+    subclass, but everything up to and including json.loads() used to sit
+    OUTSIDE the try/except below, so it was never actually retried)."""
+    last_error: Exception | None = None
+    for attempt in range(1, ASSEMBLY_MAX_ATTEMPTS + 1):
+        raw_itinerary = await chat_json(assembly_messages)
+        try:
+            itinerary = json.loads(raw_itinerary)
+            _ensure_offer_ids(itinerary, gathered)
+            return _validate_and_normalize_itinerary(
+                itinerary, gathered, expected_num_days, expected_start_date, existing_itinerary
+            )
+        except (ValueError, TypeError, AttributeError) as exc:
+            last_error = exc
+            logger.warning(
+                "Itinerary assembly attempt %d/%d failed: %s",
+                attempt, ASSEMBLY_MAX_ATTEMPTS, exc,
+            )
+    raise last_error
+
 
 async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> dict:
     """Backlog #6: full itinerary generation.
@@ -729,10 +878,7 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
         {"role": "system", "content": _build_assembly_prompt(resolved_requirements, num_days, trimmed_data)},
         {"role": "user", "content": "Assemble the itinerary now."},
     ]
-    raw_itinerary = await chat_json(assembly_messages)
-    itinerary = json.loads(raw_itinerary)
-    _ensure_offer_ids(itinerary, gathered)
-    _validate_and_normalize_itinerary(itinerary, gathered, num_days, start)
+    itinerary = await _assemble_and_validate_itinerary(assembly_messages, gathered, num_days, start)
 
     if debug:
         itinerary["rawSearchData"] = gathered
@@ -766,6 +912,12 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
     convenience_warning = await _evaluate_hotel_convenience(itinerary, threshold_minutes=threshold)
     if convenience_warning:
         itinerary.setdefault("warnings", []).append(convenience_warning)
+
+    # Carried forward (not re-derived) on every subsequent modify_itinerary
+    # call, since the traveler's original commute preference isn't part of
+    # what modify_itinerary re-extracts - see modify_itinerary's own read of
+    # this same field.
+    itinerary["maxHotelCommuteMinutes"] = threshold
 
     itinerary["generatedAt"] = datetime.now(timezone.utc).isoformat()
 
@@ -988,14 +1140,13 @@ async def modify_itinerary(current_itinerary: dict, user_request: str,
         {"role": "system", "content": _build_modify_assembly_prompt(prompt_itinerary, user_request, trimmed_data)},
         {"role": "user", "content": "Apply the change now."},
     ]
-    raw_itinerary = await chat_json(assembly_messages)
-    updated_itinerary = json.loads(raw_itinerary)
-    _ensure_offer_ids(updated_itinerary, gathered)
     current_day_count = sum(
         1 for key in current_itinerary
         if key.startswith("day") and isinstance(current_itinerary[key], dict)
     )
-    _validate_and_normalize_itinerary(updated_itinerary, gathered, current_day_count, existing_itinerary=current_itinerary)
+    updated_itinerary = await _assemble_and_validate_itinerary(
+        assembly_messages, gathered, current_day_count, existing_itinerary=current_itinerary
+    )
 
     if debug:
         updated_itinerary["rawSearchData"] = gathered
@@ -1025,10 +1176,18 @@ async def modify_itinerary(current_itinerary: dict, user_request: str,
 
         del updated_itinerary["totalCost"]
 
-    convenience_warning = await _evaluate_hotel_convenience(updated_itinerary)
+    # Read from the ORIGINAL input, not the LLM-assembled output: the
+    # traveler's commute preference isn't something modify_itinerary asks the
+    # LLM to reproduce, so relying on the LLM to echo it back would be as
+    # fragile as the totalCost-dropping issue this same pattern fixed
+    # elsewhere. Falls back to 45 for itineraries generated before this field
+    # existed.
+    threshold = current_itinerary.get("maxHotelCommuteMinutes") or 45
+    convenience_warning = await _evaluate_hotel_convenience(updated_itinerary, threshold_minutes=threshold)
     if convenience_warning:
         updated_itinerary.setdefault("warnings", []).append(convenience_warning)
 
+    updated_itinerary["maxHotelCommuteMinutes"] = threshold
     updated_itinerary["generatedAt"] = datetime.now(timezone.utc).isoformat()
 
     return updated_itinerary

@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,6 +36,13 @@ public class AgentOrchestrator {
     // itinerary generation: 150-215s observed; modification: ~65-90s observed)
     private static final int POLL_INTERVAL_MS = 3000;
     private static final int MAX_POLL_ATTEMPTS = 80; // 80 * 3s = 240s (4 min) ceiling
+    // Polling is a read-only GET with no side effects, so a single transient
+    // failure (dropped connection, brief network blip) shouldn't throw away
+    // minutes of already-elapsed generation/booking progress. But a
+    // persistently broken connection (service actually down) should still
+    // fail well before the full MAX_POLL_ATTEMPTS budget is burned - so only
+    // tolerate a handful of CONSECUTIVE failures, not unlimited ones.
+    private static final int MAX_CONSECUTIVE_POLL_FAILURES = 3;
 
     public AgentOrchestrator(
             @Value("${app.agent.ml-service.url}") String agentBaseUrl,
@@ -51,9 +60,54 @@ public class AgentOrchestrator {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> extractRequirements(String userInput) {
+        return extractRequirements(userInput, List.of());
+    }
+
+    /**
+     * Backlog #4 + conversation continuity: same as {@link #extractRequirements(String)},
+     * but also sends prior turns of this trip's conversation (oldest first,
+     * each a {"role": "user"|"assistant", "content": "..."} map) so the Agent
+     * can resolve a follow-up like "make it 3000 instead" against a
+     * destination/date mentioned earlier, instead of evaluating every message
+     * in isolation.
+     */
+    public Map<String, Object> extractRequirements(String userInput, List<Map<String, String>> conversationHistory) {
+        return extractRequirements(userInput, conversationHistory, null);
+    }
+
+    /**
+     * Same as {@link #extractRequirements(String, List)}, plus a compressed
+     * summary of turns older than what conversationHistory covers (see
+     * TripService's conversation-summarization logic) - without this, facts
+     * established many turns back would simply be lost once they age out of
+     * the verbatim history window.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> extractRequirements(String userInput, List<Map<String, String>> conversationHistory,
+                                                     String conversationSummary) {
         String url = agentBaseUrl + "/api/agent/extract-requirements";
-        Map<String, String> body = Map.of("userInput", userInput);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("userInput", userInput);
+        body.put("conversationHistory", conversationHistory != null ? conversationHistory : List.of());
+        body.put("conversationSummary", conversationSummary);
         return call(url, body);
+    }
+
+    /**
+     * Compresses conversation turns that have aged out of the recent
+     * verbatim window into a short running summary. Incremental: pass the
+     * existing summary (if any) plus only the newly-dropped turns since it
+     * was last computed - not the entire history every time. Sync, not a
+     * background task - summarizing a handful of short chat turns is fast.
+     */
+    @SuppressWarnings("unchecked")
+    public String summarizeConversation(String previousSummary, List<Map<String, String>> turns) {
+        String url = agentBaseUrl + "/api/agent/summarize-conversation";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("previousSummary", previousSummary);
+        body.put("turns", turns);
+        Map<String, Object> response = call(url, body);
+        return (String) response.get("summary");
     }
 
     /**
@@ -115,6 +169,7 @@ public class AgentOrchestrator {
     @SuppressWarnings("unchecked")
     private Map<String, Object> pollTask(String taskId) {
         String url = agentBaseUrl + "/api/agent/tasks/" + taskId;
+        int consecutiveFailures = 0;
 
         for (int attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
             try {
@@ -128,9 +183,15 @@ public class AgentOrchestrator {
             try {
                 ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
                 taskState = (Map<String, Object>) response.getBody();
+                consecutiveFailures = 0;
             } catch (RestClientException e) {
-                throw new ExternalApiException("AgentService",
-                        "Failed to poll task " + taskId + ": " + e.getMessage(), e);
+                consecutiveFailures++;
+                if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+                    throw new ExternalApiException("AgentService",
+                            "Failed to poll task " + taskId + " after " + consecutiveFailures
+                                    + " consecutive attempts: " + e.getMessage(), e);
+                }
+                continue;
             }
 
             if (taskState == null) {

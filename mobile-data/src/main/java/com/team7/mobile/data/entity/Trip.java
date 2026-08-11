@@ -44,6 +44,30 @@ public class Trip {
     @Column(nullable = false, length = 20)
     private TripStatus status = TripStatus.DRAFT;
 
+    /**
+     * Raw JSON of the last itinerary the Agent produced (generate or modify) -
+     * the Itinerary/ItineraryItem rows are a flattened, lossy projection of
+     * this (they drop totalCost/totalCostSGD/warnings/maxHotelCommuteMinutes/
+     * generatedAt), so a later "modify this itinerary" request needs this
+     * full blob to hand back to modify_itinerary as its currentItinerary input.
+     */
+    @Column(columnDefinition = "TEXT")
+    private String agentItineraryJson;
+
+    /**
+     * Running compressed summary of agent_conversations turns older than the
+     * most recent window sent to the Agent verbatim - without this, facts
+     * established many turns ago (destination, budget, ...) would simply be
+     * lost once they age out of that window instead of being carried
+     * forward. Updated incrementally (existing summary + only the
+     * newly-dropped turns), not recomputed from scratch each time.
+     */
+    @Column(columnDefinition = "TEXT")
+    private String conversationSummary;
+
+    /** How many of the oldest turns (by count) are already folded into conversationSummary. */
+    private Integer conversationSummarizedThroughCount;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -116,6 +140,30 @@ public class Trip {
 
     public void setStatus(TripStatus status) {
         this.status = status;
+    }
+
+    public String getAgentItineraryJson() {
+        return agentItineraryJson;
+    }
+
+    public void setAgentItineraryJson(String agentItineraryJson) {
+        this.agentItineraryJson = agentItineraryJson;
+    }
+
+    public String getConversationSummary() {
+        return conversationSummary;
+    }
+
+    public void setConversationSummary(String conversationSummary) {
+        this.conversationSummary = conversationSummary;
+    }
+
+    public Integer getConversationSummarizedThroughCount() {
+        return conversationSummarizedThroughCount;
+    }
+
+    public void setConversationSummarizedThroughCount(Integer conversationSummarizedThroughCount) {
+        this.conversationSummarizedThroughCount = conversationSummarizedThroughCount;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -61,4 +61,25 @@ class AgentChatServiceAsyncTest {
         Thread.sleep(simulatedWorkMillis + 500);
         assertEquals("DONE", agentChatService.getTask(taskId).get("status"));
     }
+
+    @Test
+    void startModifyTaskReturnsBeforeSlowModifyItineraryCompletes() throws InterruptedException {
+        long simulatedWorkMillis = 2000;
+        when(tripService.modifyItinerary(anyLong(), any())).thenAnswer(invocation -> {
+            Thread.sleep(simulatedWorkMillis);
+            return Map.of("status", "ITINERARY_UPDATED");
+        });
+
+        long startNanos = System.nanoTime();
+        String taskId = agentChatService.startModifyTask(1L, "find me a cheaper hotel");
+        long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000;
+
+        assertNotNull(taskId);
+        assertTrue(elapsedMillis < simulatedWorkMillis / 2,
+                "startModifyTask() took " + elapsedMillis + "ms to return, expected almost immediate.");
+        assertEquals("PROCESSING", agentChatService.getTask(taskId).get("status"));
+
+        Thread.sleep(simulatedWorkMillis + 500);
+        assertEquals("DONE", agentChatService.getTask(taskId).get("status"));
+    }
 }

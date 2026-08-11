@@ -40,9 +40,14 @@ async def _search_places(query: str, latitude: float, longitude: float,
 
     results = []
     for place in data.get("places", []):
-        location = place.get("location", {})
+        # `or {}` (not `.get(key, {})`) - Places API results have been
+        # observed with these keys present but explicitly null, and
+        # dict.get's default only kicks in when the key is absent, not when
+        # its value is None. Either way this would crash the whole batch,
+        # not just skip this one place.
+        location = place.get("location") or {}
         results.append({
-            "name": place.get("displayName", {}).get("text", "Unknown"),
+            "name": (place.get("displayName") or {}).get("text", "Unknown"),
             "address": place.get("formattedAddress"),
             "rating": place.get("rating"),
             "priceLevel": place.get("priceLevel"),

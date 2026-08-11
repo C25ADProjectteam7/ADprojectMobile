@@ -3,6 +3,7 @@ package com.team7.mobile.business.service;
 import com.team7.mobile.common.dto.LoginRequest;
 import com.team7.mobile.common.dto.LoginResponse;
 import com.team7.mobile.common.dto.RegisterRequest;
+import com.team7.mobile.common.exception.BusinessException;
 import com.team7.mobile.data.entity.User;
 import com.team7.mobile.data.repository.UserRepository;
 import com.team7.mobile.security.jwt.JwtTokenProvider;
@@ -52,7 +53,7 @@ public class AuthService {
      */
     public void register(RegisterRequest request) {
         if (userRepository.existsByUsername(request.getUsername())) {
-            throw new RuntimeException("Username already exists");
+            throw new BusinessException("USERNAME_TAKEN", "Username already exists", 409);
         }
         User user = new User();
         user.setUsername(request.getUsername());

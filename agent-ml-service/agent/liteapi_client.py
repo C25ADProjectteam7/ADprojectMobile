@@ -171,7 +171,10 @@ async def prebook_hotel(offer_id: str) -> dict:
         )
         if response.status_code >= 400:
             return {"success": False, "error": response.text}
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError:
+            return {"success": False, "error": "Malformed response from LiteAPI (prebook)"}
 
     return {"success": True, "raw": data}
 
@@ -206,7 +209,10 @@ async def book_hotel(prebook_id: str, first_name: str, last_name: str, email: st
         )
         if response.status_code >= 400:
             return {"success": False, "error": response.text}
-        data = response.json()["data"]
+        try:
+            data = response.json()["data"]
+        except (ValueError, KeyError):
+            return {"success": False, "error": "Malformed response from LiteAPI (book)"}
 
     return {
         "success": True,
@@ -225,7 +231,14 @@ def _summarize_hotel_failure(attempts: list) -> tuple[str, str]:
     """Backlog #9: translates technical attempt outcomes into a traveler-friendly
     reason and suggested next step."""
     outcomes = [a.get("outcome") for a in attempts]
-    if "book_timeout_unsafe_to_retry" in outcomes:
+    # book_timeout_unsafe_to_retry never actually reaches here (that path
+    # returns early in book_hotel_with_retry) - kept for symmetry with
+    # duffel_client.py's _summarize_flight_failure. prebook_timeout DOES
+    # reach here (a timed-out prebook just falls through the retry loop),
+    # and was missing from this check entirely - every attempt failing with
+    # a timeout used to be reported as "the hotel booking could not be
+    # completed due to a validation error", which is simply wrong.
+    if "book_timeout_unsafe_to_retry" in outcomes or "prebook_timeout" in outcomes:
         return (
             "The booking request timed out and its status could not be confirmed.",
             "Please check with support before attempting to book again, to avoid a possible duplicate booking.",
@@ -279,7 +292,12 @@ async def book_hotel_with_retry(offer_id: str, first_name: str, last_name: str, 
                     continue
             break
 
-        prebook_id = prebook_result["raw"]["data"]["prebookId"]
+        try:
+            prebook_id = prebook_result["raw"]["data"]["prebookId"]
+        except KeyError:
+            attempts.append({"attempt": attempt + 1, "outcome": "prebook_failed",
+                              "error": "Malformed response from LiteAPI (prebook missing prebookId)"})
+            break
 
         try:
             book_result = await book_hotel(
@@ -323,7 +341,10 @@ async def cancel_hotel_booking(booking_id: str) -> dict:
         )
         if response.status_code >= 400:
             return {"success": False, "error": response.text}
-        data = response.json()["data"]
+        try:
+            data = response.json()["data"]
+        except (ValueError, KeyError):
+            return {"success": False, "error": "Malformed response from LiteAPI (cancel)"}
 
     return {
         "success": True,
