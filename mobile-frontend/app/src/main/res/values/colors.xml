@@ -11,5 +11,7 @@
     <color name="travel_text_muted">#7C8799</color>
     <color name="travel_gold_soft">#FFF4D9</color>
     <color name="travel_navy_soft">#314060</color>
+    <color name="travel_red">#A84444</color>
+    <color name="travel_red_soft">#FBEAEA</color>
     <color name="white">#FFFFFF</color>
 </resources>

@@ -47,315 +47,245 @@
                 android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:text="@string/claim_reference"
                 android:textColor="#CAD1E0"
                 android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>
 
-    <androidx.core.widget.NestedScrollView
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:fillViewport="true"
-        android:padding="@dimen/screen_horizontal_padding">
+        android:layout_weight="1">
+
+        <ProgressBar
+            android:id="@+id/claimLoading"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
 
         <LinearLayout
+            android:id="@+id/claimStateContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
             android:orientation="vertical"
-            android:paddingBottom="20dp">
+            android:padding="32dp"
+            android:visibility="gone">
 
             <TextView
+                android:id="@+id/claimStateMessage"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/bg_status_gold"
-                android:padding="14dp"
-                android:text="@string/claim_pending_message"
-                android:textColor="@color/travel_gold_dark"
-                android:textSize="13sp"
-                android:textStyle="bold" />
+                android:gravity="center"
+                android:textColor="@color/travel_text"
+                android:textSize="15sp" />
 
-            <com.google.android.material.card.MaterialCardView
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/claimRetryButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:layout_marginTop="14dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="@string/retry"
+                android:textAllCaps="false"
+                android:textColor="@color/travel_text"
+                app:cornerRadius="8dp"
+                app:strokeColor="@color/travel_border" />
+        </LinearLayout>
+
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/claimContent"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:padding="@dimen/screen_horizontal_padding"
+            android:visibility="gone">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardBackgroundColor="@color/white"
-                app:cardCornerRadius="@dimen/card_corner_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/travel_border"
-                app:strokeWidth="1dp">
+                android:orientation="vertical"
+                android:paddingBottom="22dp">
 
-                <LinearLayout
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_internal_padding">
+                    app:cardBackgroundColor="@color/white"
+                    app:cardCornerRadius="@dimen/card_corner_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="@color/travel_border"
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:gravity="top"
-                        android:orientation="horizontal">
+                        android:orientation="vertical"
+                        android:padding="@dimen/card_internal_padding">
 
                         <LinearLayout
-                            android:layout_width="0dp"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/reimbursement_claim"
-                                android:textColor="@color/travel_text_muted"
-                                android:textSize="11sp"
-                                android:textStyle="bold" />
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <TextView
                                 android:id="@+id/claimAmount"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:textColor="@color/travel_text"
+                                android:textSize="25sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/claimStatus"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
-                                android:text="@string/expense_amount"
-                                android:textColor="@color/travel_text"
-                                android:textSize="22sp"
+                                android:background="@drawable/bg_status_gold"
+                                android:paddingStart="10dp"
+                                android:paddingTop="5dp"
+                                android:paddingEnd="10dp"
+                                android:paddingBottom="5dp"
+                                android:textColor="@color/travel_gold_dark"
+                                android:textSize="11sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
                         <TextView
-                            android:id="@+id/claimStatus"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:background="@drawable/bg_status_gold"
-                            android:text="@string/under_review"
-                            android:textColor="@color/travel_gold_dark"
-                            android:textSize="11sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginTop="13dp"
-                        android:background="@color/travel_border" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/expense_singular"
-                            android:textColor="@color/travel_text_muted"
-                            android:textSize="13sp" />
-
-                        <TextView
                             android:id="@+id/claimMerchant"
-                            android:layout_width="0dp"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1.5"
-                            android:ellipsize="end"
-                            android:gravity="end"
-                            android:maxLines="1"
-                            android:text="@string/expense_merchant"
+                            android:layout_marginTop="18dp"
                             android:textColor="@color/travel_text"
-                            android:textSize="13sp"
+                            android:textSize="15sp"
                             android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/travel_border" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/receipt"
-                            android:textColor="@color/travel_text_muted"
-                            android:textSize="13sp" />
-
-                        <TextView
-                            android:id="@+id/claimReceipt"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1.5"
-                            android:ellipsize="middle"
-                            android:gravity="end"
-                            android:maxLines="1"
-                            android:textColor="@color/travel_text"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/travel_border" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/policy_check"
-                            android:textColor="@color/travel_text_muted"
-                            android:textSize="13sp" />
 
                         <TextView
                             android:id="@+id/claimPolicy"
-                            android:layout_width="wrap_content"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:background="@drawable/bg_status_green"
-                            android:text="@string/within_policy"
-                            android:textColor="@color/travel_green"
-                            android:textSize="11sp"
-                            android:textStyle="bold" />
+                            android:layout_marginTop="5dp"
+                            android:textColor="@color/travel_text_muted"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/claimReceipt"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:ellipsize="middle"
+                            android:maxLines="2"
+                            android:textColor="@color/travel_text_muted"
+                            android:textSize="12sp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/openReceiptButton"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="42dp"
+                            android:layout_marginTop="10dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:text="@string/open_receipt"
+                            android:textAllCaps="false"
+                            android:textColor="@color/travel_text"
+                            android:visibility="gone"
+                            app:cornerRadius="8dp"
+                            app:strokeColor="@color/travel_border" />
                     </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
 
-                    <ImageView
-                        android:id="@+id/receiptPreview"
-                        android:layout_width="match_parent"
-                        android:layout_height="120dp"
-                        android:layout_marginTop="10dp"
-                        android:contentDescription="@string/selected_receipt_preview"
-                        android:scaleType="centerCrop"
-                        android:visibility="gone" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardBackgroundColor="@color/white"
-                app:cardCornerRadius="@dimen/card_corner_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/travel_border"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_internal_padding">
+                    android:layout_marginTop="12dp"
+                    app:cardBackgroundColor="@color/white"
+                    app:cardCornerRadius="@dimen/card_corner_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="@color/travel_border"
+                    app:strokeWidth="1dp">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/claim_progress"
-                        android:textColor="@color/travel_text_muted"
-                        android:textSize="11sp"
-                        android:textStyle="bold" />
-
-                    <TextView
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="15dp"
-                        android:drawablePadding="10dp"
-                        android:text="@string/claim_submitted_by"
-                        android:textColor="@color/travel_text"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        app:drawableStartCompat="@drawable/ic_claim"
-                        app:drawableTint="@color/travel_green" />
+                        android:orientation="vertical"
+                        android:padding="@dimen/card_internal_padding">
 
-                    <TextView
-                        android:id="@+id/claimSubmittedDate"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="34dp"
-                        android:layout_marginTop="2dp"
-                        android:textColor="@color/travel_text_muted"
-                        android:textSize="12sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/claim_progress"
+                            android:textColor="@color/travel_text_muted"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="17dp"
-                        android:drawablePadding="10dp"
-                        android:text="@string/finance_review"
-                        android:textColor="@color/travel_text"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        app:drawableStartCompat="@drawable/ic_claim"
-                        app:drawableTint="@color/travel_gold" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="15dp"
+                            android:text="@string/claim_submitted_via_app"
+                            android:textColor="@color/travel_text"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="34dp"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/finance_review_waiting"
-                        android:textColor="@color/travel_text_muted"
-                        android:textSize="12sp" />
+                        <TextView
+                            android:id="@+id/claimSubmittedDate"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:textColor="@color/travel_text_muted"
+                            android:textSize="12sp" />
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="17dp"
-                        android:drawablePadding="10dp"
-                        android:text="@string/claim_decision"
-                        android:textColor="@color/travel_text"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        app:drawableStartCompat="@drawable/ic_claim"
-                        app:drawableTint="@color/travel_border" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="18dp"
+                            android:text="@string/finance_review"
+                            android:textColor="@color/travel_text"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="34dp"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/claim_decision_waiting"
-                        android:textColor="@color/travel_text_muted"
-                        android:textSize="12sp" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+                        <TextView
+                            android:id="@+id/claimDecisionDetail"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:textColor="@color/travel_text_muted"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/addAnotherExpenseButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="18dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:text="@string/add_another_expense"
-                android:textAllCaps="false"
-                android:textColor="@color/travel_text"
-                android:textStyle="bold"
-                app:cornerRadius="8dp"
-                app:strokeColor="@color/travel_border" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/addAnotherExpenseButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="18dp"
+                    android:enabled="false"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="@string/add_another_expense"
+                    android:textAllCaps="false"
+                    android:textColor="@color/travel_text"
+                    android:textStyle="bold"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="@color/travel_border" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:gravity="center"
-                android:text="@string/claim_mock_notice"
-                android:textColor="@color/travel_text_muted"
-                android:textSize="11sp" />
-        </LinearLayout>
-    </androidx.core.widget.NestedScrollView>
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center"
+                    android:text="@string/claim_mock_notice"
+                    android:textColor="@color/travel_text_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </FrameLayout>
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/claimStatusBottomNavigation"

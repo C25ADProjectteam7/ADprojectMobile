@@ -18,6 +18,8 @@ class ApiErrorParserTest {
 
         assertEquals(ApiFailureKind.UNAUTHORIZED, failure.kind)
         assertEquals("Invalid username or password", failure.message)
+        assertEquals(401, failure.statusCode)
+        assertEquals(401, failure.backendCode)
     }
 
     @Test
@@ -30,5 +32,27 @@ class ApiErrorParserTest {
 
         assertEquals(ApiFailureKind.SERVER, failure.kind)
         assertEquals(null, failure.message)
+        assertEquals(500, failure.statusCode)
+        assertEquals(null, failure.backendCode)
+    }
+
+    @Test
+    fun commonClientStatusesAreClassifiedSeparately() {
+        assertEquals(
+            ApiFailureKind.FORBIDDEN,
+            ApiErrorParser.fromHttp(403, null, gson).kind,
+        )
+        assertEquals(
+            ApiFailureKind.NOT_FOUND,
+            ApiErrorParser.fromHttp(404, null, gson).kind,
+        )
+        assertEquals(
+            ApiFailureKind.CONFLICT,
+            ApiErrorParser.fromHttp(409, null, gson).kind,
+        )
+        assertEquals(
+            ApiFailureKind.VALIDATION,
+            ApiErrorParser.fromHttp(422, null, gson).kind,
+        )
     }
 }

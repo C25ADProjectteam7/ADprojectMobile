@@ -70,7 +70,64 @@
             android:paddingEnd="@dimen/screen_horizontal_padding"
             android:paddingBottom="20dp">
 
+            <com.google.android.material.progressindicator.CircularProgressIndicator
+                android:id="@+id/itineraryLoading"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="24dp"
+                android:visibility="gone"
+                app:indicatorColor="@color/travel_gold"
+                app:indicatorSize="36dp"
+                app:trackThickness="3dp" />
+
+            <TextView
+                android:id="@+id/agentTaskStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_notice_gold"
+                android:gravity="center"
+                android:padding="14dp"
+                android:textColor="@color/travel_text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
             <LinearLayout
+                android:id="@+id/itineraryStateContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="24dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/itineraryStateMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:textColor="@color/travel_text_muted"
+                    android:textSize="14sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/itineraryRetryButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="14dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="@string/retry"
+                    android:textAllCaps="false"
+                    android:textColor="@color/travel_text"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="@color/travel_border" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/agentIntroRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="top"
@@ -113,16 +170,18 @@
             </LinearLayout>
 
             <TextView
+                android:id="@+id/itineraryDataNotice"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:background="@drawable/bg_status_gold"
-                android:text="@string/mock_data_notice"
+                android:text="@string/agent_itinerary_notice"
                 android:textColor="@color/travel_gold_dark"
                 android:textSize="11sp"
                 android:textStyle="bold" />
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/flightCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
@@ -228,6 +287,7 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/hotelCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
@@ -304,7 +364,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
                         android:background="@drawable/bg_status_gold"
-                        android:text="@string/hotel_prediction"
+                        android:text="@string/ml_prediction_loading"
                         android:textColor="@color/travel_gold_dark"
                         android:textSize="11sp"
                         android:textStyle="bold" />
@@ -344,6 +404,7 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/highlightCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
@@ -411,6 +472,7 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/budgetCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
@@ -465,6 +527,7 @@
             </com.google.android.material.card.MaterialCardView>
 
             <LinearLayout
+                android:id="@+id/itineraryActions"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="16dp"

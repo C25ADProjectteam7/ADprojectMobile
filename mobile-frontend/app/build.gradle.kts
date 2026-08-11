@@ -4,6 +4,9 @@ plugins {
 
 val apiBaseUrl = providers.gradleProperty("API_BASE_URL")
     .orElse("http://10.0.2.2:8080/")
+val apiBaseUrlValue = apiBaseUrl.get().also { value ->
+    require(value.endsWith("/")) { "API_BASE_URL must end with '/'" }
+}
 
 android {
     namespace = "iss.nus.edu.sg.viewbinding.caproject"
@@ -21,7 +24,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.get()}\"")
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrlValue\"")
     }
 
     buildTypes {
@@ -51,6 +54,7 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }

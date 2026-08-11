@@ -5,33 +5,34 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.inputmethod.InputMethodManager
-import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.IntentCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.snackbar.Snackbar
 import iss.nus.edu.sg.viewbinding.caproject.R
-import iss.nus.edu.sg.viewbinding.caproject.data.mock.CurrentTripStore
+import iss.nus.edu.sg.viewbinding.caproject.data.local.CurrentTripStore
+import iss.nus.edu.sg.viewbinding.caproject.data.repository.TripRepository
 import iss.nus.edu.sg.viewbinding.caproject.databinding.ActivityTripRequestBinding
 import iss.nus.edu.sg.viewbinding.caproject.model.TripRequestData
+import iss.nus.edu.sg.viewbinding.caproject.network.ApiResult
+import iss.nus.edu.sg.viewbinding.caproject.ui.auth.AuthenticatedActivity
 import iss.nus.edu.sg.viewbinding.caproject.ui.main.MainActivity
 import iss.nus.edu.sg.viewbinding.caproject.validation.InputValidator
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
-class TripRequestActivity : AppCompatActivity() {
+class TripRequestActivity : AuthenticatedActivity() {
 
     private lateinit var binding: ActivityTripRequestBinding
+    private lateinit var tripRepository: TripRepository
     private val dateFormatter = DateTimeFormatter.ofPattern("dd MMM uuuu", Locale.ENGLISH)
     private var startDate: LocalDate? = LocalDate.of(2026, 8, 12)
     private var endDate: LocalDate? = LocalDate.of(2026, 8, 14)
-
-    private val finishMockRequest = Runnable {
-        binding.requestProgress.isVisible = false
-        binding.sendToAgentButton.isEnabled = true
-        binding.sendToAgentButton.setText(R.string.send_to_agent)
-        openItineraryReview()
-    }
+    private var editingTrip: TripRequestData? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +41,12 @@ class TripRequestActivity : AppCompatActivity() {
 
         binding = ActivityTripRequestBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        tripRepository = TripRepository.create(this)
+        editingTrip = IntentCompat.getSerializableExtra(
+            intent,
+            EXTRA_EDIT_TRIP,
+            TripRequestData::class.java,
+        )
 
         binding.backButton.setOnClickListener { finish() }
         binding.startDateInput.setOnClickListener {
@@ -67,6 +74,7 @@ class TripRequestActivity : AppCompatActivity() {
         binding.sendToAgentButton.setOnClickListener { submitTripRequest() }
         binding.tripRequestRoot.setOnClickListener { hideKeyboard() }
 
+        editingTrip?.let(::bindEditingTrip)
         setupBottomNavigation()
     }
 
@@ -159,32 +167,79 @@ class TripRequestActivity : AppCompatActivity() {
 
         if (!isValid) return
 
-        binding.requestProgress.isVisible = true
-        binding.sendToAgentButton.isEnabled = false
-        binding.sendToAgentButton.setText(R.string.sending_to_agent)
-        binding.sendToAgentButton.postDelayed(finishMockRequest, MOCK_REQUEST_DELAY_MS)
-    }
-
-    private fun openItineraryReview() {
-        val tripRequest = TripRequestData(
-            destination = binding.destinationInput.text?.toString().orEmpty().trim(),
+        val localRequest = TripRequestData(
+            destination = destination,
             startDate = requireNotNull(startDate),
             endDate = requireNotNull(endDate),
-            budget = binding.budgetInput.text?.toString().orEmpty()
-                .replace(",", "")
-                .toDoubleOrNull()
-                ?: DEFAULT_BUDGET,
+            budget = budget.replace(",", "").toDouble(),
             preferences = selectedPreferences(),
             notes = binding.notesInput.text?.toString().orEmpty().trim(),
+            remoteId = editingTrip?.remoteId,
+            remoteTitle = editingTrip?.remoteTitle.orEmpty(),
+            remoteStatus = editingTrip?.remoteStatus.orEmpty(),
         )
-        CurrentTripStore.saveRequest(tripRequest)
 
-        startActivity(
-            ItineraryReviewActivity.createIntent(
-                context = this,
-                tripRequest = tripRequest,
-            ),
+        setLoading(true)
+        lifecycleScope.launch {
+            val result = editingTrip?.remoteId?.let { tripId ->
+                tripRepository.updateTrip(tripId, localRequest)
+            } ?: tripRepository.createTrip(localRequest)
+
+            when (result) {
+                is ApiResult.Success -> handleSavedTrip(result.value)
+                is ApiResult.Failure -> {
+                    setLoading(false)
+                    showSaveFailure(result)
+                }
+            }
+        }
+    }
+
+    private fun handleSavedTrip(trip: TripRequestData) {
+        CurrentTripStore.saveRequest(trip)
+        if (editingTrip != null) {
+            setResult(RESULT_OK)
+            finish()
+            return
+        }
+        startActivity(ItineraryReviewActivity.createIntent(this, trip))
+        finish()
+    }
+
+    private fun showSaveFailure(failure: ApiResult.Failure) {
+        val snackbar = Snackbar.make(binding.root, tripMessageFor(failure), Snackbar.LENGTH_LONG)
+        if (failure.isTripRetryable()) snackbar.setAction(R.string.retry) { submitTripRequest() }
+        snackbar.show()
+    }
+
+    private fun setLoading(isLoading: Boolean) {
+        binding.requestProgress.isVisible = isLoading
+        binding.sendToAgentButton.isEnabled = !isLoading
+        binding.sendToAgentButton.setText(
+            when {
+                isLoading -> R.string.saving_trip
+                editingTrip != null -> R.string.save_trip_changes
+                else -> R.string.send_to_agent
+            },
         )
+        binding.tripRequestScroll.isEnabled = !isLoading
+    }
+
+    private fun bindEditingTrip(trip: TripRequestData) {
+        binding.tripRequestTitle.setText(R.string.edit_trip)
+        binding.tripRequestSubtitle.setText(R.string.edit_trip_subtitle)
+        startDate = trip.startDate
+        endDate = trip.endDate
+        binding.destinationInput.setText(trip.destination)
+        binding.startDateInput.setText(trip.startDate.format(dateFormatter))
+        binding.endDateInput.setText(trip.endDate.format(dateFormatter))
+        binding.budgetInput.setText(trip.budget.toBigDecimal().stripTrailingZeros().toPlainString())
+        binding.notesInput.setText(trip.notes)
+        binding.cityCentreChip.isChecked = getString(R.string.preference_city_centre) in trip.preferences
+        binding.directFlightsChip.isChecked = getString(R.string.preference_direct_flights) in trip.preferences
+        binding.familyFriendlyChip.isChecked = getString(R.string.preference_family_friendly) in trip.preferences
+        binding.businessHotelChip.isChecked = getString(R.string.preference_business_hotel) in trip.preferences
+        binding.sendToAgentButton.setText(R.string.save_trip_changes)
     }
 
     private fun selectedPreferences(): ArrayList<String> {
@@ -204,15 +259,11 @@ class TripRequestActivity : AppCompatActivity() {
         }
     }
 
-    override fun onDestroy() {
-        if (::binding.isInitialized) {
-            binding.sendToAgentButton.removeCallbacks(finishMockRequest)
-        }
-        super.onDestroy()
-    }
-
     companion object {
-        private const val MOCK_REQUEST_DELAY_MS = 900L
-        private const val DEFAULT_BUDGET = 2_000.0
+        private const val EXTRA_EDIT_TRIP = "edit_trip"
+
+        fun createEditIntent(context: Context, trip: TripRequestData): Intent {
+            return Intent(context, TripRequestActivity::class.java).putExtra(EXTRA_EDIT_TRIP, trip)
+        }
     }
 }

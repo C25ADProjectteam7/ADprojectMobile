@@ -11,6 +11,9 @@ data class TripRequestData(
     val budget: Double,
     val preferences: ArrayList<String>,
     val notes: String,
+    val remoteId: Long? = null,
+    val remoteTitle: String = "",
+    val remoteStatus: String = "",
 ) : Serializable {
 
     val city: String
@@ -18,6 +21,9 @@ data class TripRequestData(
 
     val tripDays: Int
         get() = ChronoUnit.DAYS.between(startDate, endDate).toInt() + 1
+
+    val displayTitle: String
+        get() = remoteTitle.ifBlank { "$city Business Trip" }
 
     companion object {
         const val EXTRA_KEY = "trip_request_data"
