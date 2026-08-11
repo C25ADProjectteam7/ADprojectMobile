@@ -1,0 +1,177 @@
+{
+  "per_city": {
+    "tokyo": {
+      "raw_rows": 34419,
+      "usable_rows": 32359,
+      "short_stay_rows": 28647,
+      "currency_evidence": {
+        "expected": "JPY",
+        "from_iso_code": 28647,
+        "from_symbol_fallback": 0,
+        "from_city_assumption": 0
+      },
+      "dropped_bad_dates": 42,
+      "dropped_below_min_price": 4,
+      "dropped_above_max_price": 78,
+      "final_rows": 28523,
+      "hotel_like_rows": 1819,
+      "price_usd_median": 125.06,
+      "price_usd_p95": 373.31
+    },
+    "bangkok": {
+      "raw_rows": 31069,
+      "usable_rows": 28987,
+      "short_stay_rows": 20845,
+      "currency_evidence": {
+        "expected": "THB",
+        "from_iso_code": 0,
+        "from_symbol_fallback": 20845,
+        "from_city_assumption": 0
+      },
+      "dropped_bad_dates": 6,
+      "dropped_below_min_price": 105,
+      "dropped_above_max_price": 41,
+      "final_rows": 20693,
+      "hotel_like_rows": 2900,
+      "price_usd_median": 55.23,
+      "price_usd_p95": 233.56
+    },
+    "paris": {
+      "raw_rows": 77679,
+      "usable_rows": 48402,
+      "short_stay_rows": 40969,
+      "currency_evidence": {
+        "expected": "EUR",
+        "from_iso_code": 40969,
+        "from_symbol_fallback": 0,
+        "from_city_assumption": 0
+      },
+      "dropped_bad_dates": 16,
+      "dropped_below_min_price": 0,
+      "dropped_above_max_price": 517,
+      "final_rows": 40436,
+      "hotel_like_rows": 1419,
+      "price_usd_median": 262.86,
+      "price_usd_p95": 920.21
+    },
+    "barcelona": {
+      "raw_rows": 15293,
+      "usable_rows": 13355,
+      "short_stay_rows": 8101,
+      "currency_evidence": {
+        "expected": "EUR",
+        "from_iso_code": 8101,
+        "from_symbol_fallback": 0,
+        "from_city_assumption": 0
+      },
+      "dropped_bad_dates": 54,
+      "dropped_below_min_price": 0,
+      "dropped_above_max_price": 137,
+      "final_rows": 7910,
+      "hotel_like_rows": 467,
+      "price_usd_median": 294.33,
+      "price_usd_p95": 692.29
+    },
+    "london": {
+      "raw_rows": 92638,
+      "usable_rows": 62240,
+      "short_stay_rows": 58872,
+      "currency_evidence": {
+        "expected": "GBP",
+        "from_iso_code": 58872,
+        "from_symbol_fallback": 0,
+        "from_city_assumption": 0
+      },
+      "dropped_bad_dates": 370,
+      "dropped_below_min_price": 0,
+      "dropped_above_max_price": 443,
+      "final_rows": 58059,
+      "hotel_like_rows": 1299,
+      "price_usd_median": 242.69,
+      "price_usd_p95": 841.4
+    },
+    "new-york-city": {
+      "raw_rows": 30259,
+      "usable_rows": 21514,
+      "short_stay_rows": 4985,
+      "currency_evidence": {
+        "expected": "USD",
+        "from_iso_code": 4985,
+        "from_symbol_fallback": 0,
+        "from_city_assumption": 0
+      },
+      "dropped_bad_dates": 1,
+      "dropped_below_min_price": 0,
+      "dropped_above_max_price": 72,
+      "final_rows": 4912,
+      "hotel_like_rows": 1456,
+      "price_usd_median": 304.12,
+      "price_usd_p95": 1011.67
+    },
+    "singapore": {
+      "raw_rows": 3097,
+      "usable_rows": 2592,
+      "short_stay_rows": 1378,
+      "currency_evidence": {
+        "expected": "SGD",
+        "from_iso_code": 1378,
+        "from_symbol_fallback": 0,
+        "from_city_assumption": 0
+      },
+      "dropped_bad_dates": 0,
+      "dropped_below_min_price": 0,
+      "dropped_above_max_price": 4,
+      "final_rows": 1374,
+      "hotel_like_rows": 528,
+      "price_usd_median": 178.73,
+      "price_usd_p95": 623.02
+    },
+    "sydney": {
+      "raw_rows": 20573,
+      "usable_rows": 17784,
+      "short_stay_rows": 15566,
+      "currency_evidence": {
+        "expected": "AUD",
+        "from_iso_code": 15566,
+        "from_symbol_fallback": 0,
+        "from_city_assumption": 0
+      },
+      "dropped_bad_dates": 12,
+      "dropped_below_min_price": 0,
+      "dropped_above_max_price": 174,
+      "final_rows": 15380,
+      "hotel_like_rows": 425,
+      "price_usd_median": 217.12,
+      "price_usd_p95": 752.69
+    }
+  },
+  "totals": {
+    "rows": 177287,
+    "cities": 8,
+    "listings": 177287,
+    "hotel_like_rows": 10313,
+    "price_usd_median": 200.02,
+    "checkin_min": "2026-06-14",
+    "checkin_max": "2027-07-01",
+    "null_rate": {
+      "bedrooms": 0.165,
+      "beds": 0.0565,
+      "bathrooms": 0.0013,
+      "review_scores_rating": 0.1656
+    }
+  },
+  "fx_rates_usd": {
+    "USD": 1.0,
+    "JPY": 160.725,
+    "THB": 32.88486,
+    "EUR": 0.86828,
+    "GBP": 0.74994,
+    "SGD": 1.2879,
+    "AUD": 1.4232
+  },
+  "filters": {
+    "max_minimum_nights": 7,
+    "min_price_usd": 10.0,
+    "max_price_usd": 2000.0
+  }
+}
