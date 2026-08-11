@@ -39,6 +39,17 @@ class LoginActivity : AppCompatActivity() {
         ).show()
     }
 
+    private val forgotPasswordLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+
+        val username = result.data
+            ?.getStringExtra(ForgotPasswordActivity.EXTRA_RESET_USERNAME)
+            .orEmpty()
+        showPasswordUpdated(username)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -53,6 +64,8 @@ class LoginActivity : AppCompatActivity() {
         binding = ActivityLoginBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        intent.getStringExtra(EXTRA_PASSWORD_UPDATED_USERNAME)?.let(::showPasswordUpdated)
+
         binding.usernameInput.doAfterTextChanged { binding.usernameInputLayout.error = null }
         binding.passwordInput.doAfterTextChanged { binding.passwordInputLayout.error = null }
 
@@ -61,11 +74,12 @@ class LoginActivity : AppCompatActivity() {
             registerLauncher.launch(Intent(this, RegisterActivity::class.java))
         }
         binding.forgotPasswordButton.setOnClickListener {
-            Snackbar.make(
-                binding.root,
-                R.string.password_recovery_unavailable,
-                Snackbar.LENGTH_LONG,
-            ).show()
+            forgotPasswordLauncher.launch(
+                Intent(this, ForgotPasswordActivity::class.java).putExtra(
+                    ForgotPasswordActivity.EXTRA_INITIAL_USERNAME,
+                    binding.usernameInput.text?.toString().orEmpty().trim(),
+                ),
+            )
         }
     }
 
@@ -120,8 +134,19 @@ class LoginActivity : AppCompatActivity() {
             if (isLoading) R.string.logging_in else R.string.log_in_securely,
         )
         binding.createAccountButton.isEnabled = !isLoading
+        binding.forgotPasswordButton.isEnabled = !isLoading
         binding.usernameInput.isEnabled = !isLoading
         binding.passwordInput.isEnabled = !isLoading
+    }
+
+    private fun showPasswordUpdated(username: String) {
+        binding.usernameInput.setText(username)
+        binding.passwordInput.requestFocus()
+        Snackbar.make(
+            binding.root,
+            R.string.password_updated_login,
+            Snackbar.LENGTH_LONG,
+        ).show()
     }
 
     private fun openMain() {
@@ -131,5 +156,9 @@ class LoginActivity : AppCompatActivity() {
             ),
         )
         finish()
+    }
+
+    companion object {
+        const val EXTRA_PASSWORD_UPDATED_USERNAME = "password_updated_username"
     }
 }

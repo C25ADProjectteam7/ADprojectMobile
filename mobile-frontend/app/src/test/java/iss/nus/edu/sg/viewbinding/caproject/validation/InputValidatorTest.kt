@@ -23,6 +23,13 @@ class InputValidatorTest {
     }
 
     @Test
+    fun requiredEmail_rejectsBlankAndMalformedValues() {
+        assertTrue(InputValidator.isValidRequiredEmail("ashley.tan@company.com.sg"))
+        assertFalse(InputValidator.isValidRequiredEmail(""))
+        assertFalse(InputValidator.isValidRequiredEmail("ashley.tan@company"))
+    }
+
+    @Test
     fun registrationUsername_respectsBackendLength() {
         assertTrue(InputValidator.isValidRegistrationUsername("ashley.tan"))
         assertFalse(InputValidator.isValidRegistrationUsername("ab"))
@@ -34,6 +41,14 @@ class InputValidatorTest {
         assertTrue(InputValidator.isValidRegistrationPassword("travel123"))
         assertFalse(InputValidator.isValidRegistrationPassword("short7"))
         assertFalse(InputValidator.isValidRegistrationPassword("a".repeat(101)))
+    }
+
+    @Test
+    fun phone_acceptsCommonFormattingAndRejectsInvalidValues() {
+        assertTrue(InputValidator.isValidPhone("+65 8123 4567"))
+        assertTrue(InputValidator.isValidPhone("(65) 8123-4567"))
+        assertFalse(InputValidator.isValidPhone("12345"))
+        assertFalse(InputValidator.isValidPhone("call-me"))
     }
 
     @Test

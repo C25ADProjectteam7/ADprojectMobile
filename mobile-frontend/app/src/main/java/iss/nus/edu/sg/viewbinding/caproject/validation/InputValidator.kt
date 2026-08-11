@@ -14,12 +14,22 @@ object InputValidator {
         return value.isBlank() || isValidEmail(value)
     }
 
+    fun isValidRequiredEmail(value: String): Boolean {
+        return value.isNotBlank() && isValidEmail(value)
+    }
+
     fun isValidRegistrationUsername(value: String): Boolean {
         return value.trim().length in 3..50
     }
 
     fun isValidRegistrationPassword(value: String): Boolean {
         return value.length in 8..100
+    }
+
+    fun isValidPhone(value: String): Boolean {
+        val trimmedValue = value.trim()
+        if (!PHONE_PATTERN.matches(trimmedValue)) return false
+        return trimmedValue.count(Char::isDigit) in 7..15
     }
 
     fun isPositiveBudget(value: String): Boolean {
@@ -30,4 +40,6 @@ object InputValidator {
     fun isValidDateRange(startDate: LocalDate?, endDate: LocalDate?): Boolean {
         return startDate != null && endDate != null && !endDate.isBefore(startDate)
     }
+
+    private val PHONE_PATTERN = Regex("^\\+?[0-9() -]+$")
 }

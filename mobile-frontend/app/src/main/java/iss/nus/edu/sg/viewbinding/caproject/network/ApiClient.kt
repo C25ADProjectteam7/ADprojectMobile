@@ -18,6 +18,18 @@ object ApiClient {
 
     fun authApi(context: Context): AuthApi = retrofit(context).create(AuthApi::class.java)
 
+    fun tripApi(context: Context): TripApi = retrofit(context).create(TripApi::class.java)
+
+    fun agentApi(context: Context): AgentApi = retrofit(context).create(AgentApi::class.java)
+
+    fun bookingApi(context: Context): BookingApi = retrofit(context).create(BookingApi::class.java)
+
+    fun expenseApi(context: Context): ExpenseApi = retrofit(context).create(ExpenseApi::class.java)
+
+    fun userApi(context: Context): UserApi = retrofit(context).create(UserApi::class.java)
+
+    fun mlApi(context: Context): MlApi = retrofit(context).create(MlApi::class.java)
+
     fun gson(): Gson = GsonBuilder().create()
 
     private fun retrofit(context: Context): Retrofit {

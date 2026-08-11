@@ -2,32 +2,22 @@ package iss.nus.edu.sg.viewbinding.caproject.ui.main
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.Fragment
 import iss.nus.edu.sg.viewbinding.caproject.R
 import iss.nus.edu.sg.viewbinding.caproject.databinding.ActivityMainBinding
-import iss.nus.edu.sg.viewbinding.caproject.session.SessionManager
-import iss.nus.edu.sg.viewbinding.caproject.ui.auth.LoginActivity
+import iss.nus.edu.sg.viewbinding.caproject.ui.auth.AuthenticatedActivity
 import iss.nus.edu.sg.viewbinding.caproject.ui.claims.ClaimsFragment
 import iss.nus.edu.sg.viewbinding.caproject.ui.expense.ExpensesFragment
 import iss.nus.edu.sg.viewbinding.caproject.ui.home.HomeFragment
 import iss.nus.edu.sg.viewbinding.caproject.ui.trips.TripsFragment
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AuthenticatedActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var sessionManager: SessionManager
-    private var isRedirectingToLogin = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        sessionManager = SessionManager(this)
-        if (!sessionManager.isLoggedIn()) {
-            openLogin()
-            return
-        }
 
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
 
@@ -39,11 +29,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (savedInstanceState == null) selectRequestedTab(intent)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (!isRedirectingToLogin && !sessionManager.isLoggedIn()) openLogin()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -78,16 +63,6 @@ class MainActivity : AppCompatActivity() {
             .replace(R.id.mainFragmentContainer, screen, tag)
             .commit()
         return true
-    }
-
-    private fun openLogin() {
-        isRedirectingToLogin = true
-        startActivity(
-            Intent(this, LoginActivity::class.java).addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK,
-            ),
-        )
-        finish()
     }
 
     companion object {
