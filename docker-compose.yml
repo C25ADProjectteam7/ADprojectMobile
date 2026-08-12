@@ -65,9 +65,11 @@ services:
     restart: unless-stopped
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DUFFEL_API_TOKEN=${DUFFEL_API_TOKEN}
+      - LITEAPI_API_KEY=${LITEAPI_API_KEY}
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
       - AMADEUS_API_KEY=${AMADEUS_API_KEY}
       - AMADEUS_API_SECRET=${AMADEUS_API_SECRET}
-      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
     volumes:
       - ./agent-ml-service/models:/app/models
     networks:
