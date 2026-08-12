@@ -3,6 +3,7 @@ package com.team7.mobile.business.service;
 import com.team7.mobile.common.dto.ExpenseDTO;
 import com.team7.mobile.common.exception.BusinessException;
 import com.team7.mobile.common.exception.ForbiddenException;
+import com.team7.mobile.common.exception.ResourceNotFoundException;
 import com.team7.mobile.data.entity.Expense;
 import com.team7.mobile.data.entity.Trip;
 import com.team7.mobile.data.entity.User;
@@ -44,9 +45,9 @@ public class ExpenseService {
             throw new IllegalStateException("User not authenticated");
         }
         Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new RuntimeException("Trip not found: " + tripId));
+                .orElseThrow(() -> new ResourceNotFoundException("Trip", tripId));
         if (!trip.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Not authorized to claim for trip: " + tripId);
+            throw new ForbiddenException("Not authorized to claim for trip: " + tripId);
         }
 
         Expense expense = new Expense();
@@ -170,7 +171,7 @@ public class ExpenseService {
     private Expense findApprovableExpense(Long expenseId) {
         requireApprovalRole();
         Expense expense = expenseRepository.findById(expenseId)
-                .orElseThrow(() -> new RuntimeException("Expense not found: " + expenseId));
+                .orElseThrow(() -> new ResourceNotFoundException("Expense", expenseId));
         Expense.ExpenseStatus status = expense.getStatus();
         if (status == Expense.ExpenseStatus.APPROVED || status == Expense.ExpenseStatus.REJECTED) {
             throw new BusinessException("EXPENSE_ALREADY_REVIEWED",
@@ -182,7 +183,7 @@ public class ExpenseService {
     private Expense findOwnedExpense(Long expenseId) {
         Long userId = currentUser.getId();
         return expenseRepository.findByIdAndUserId(expenseId, userId)
-                .orElseThrow(() -> new RuntimeException("Expense not found: " + expenseId));
+                .orElseThrow(() -> new ResourceNotFoundException("Expense", expenseId));
     }
 
     /**

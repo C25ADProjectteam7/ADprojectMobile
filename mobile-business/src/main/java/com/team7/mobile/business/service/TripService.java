@@ -6,16 +6,21 @@ import com.team7.mobile.common.dto.ItineraryItemDTO;
 import com.team7.mobile.common.dto.TripDTO;
 import com.team7.mobile.common.dto.TripDetailDTO;
 import com.team7.mobile.common.dto.TripRequest;
+import com.team7.mobile.common.exception.ForbiddenException;
+import com.team7.mobile.common.exception.ResourceNotFoundException;
+import com.team7.mobile.data.entity.AgentConversation;
 import com.team7.mobile.data.entity.Itinerary;
 import com.team7.mobile.data.entity.ItineraryItem;
 import com.team7.mobile.data.entity.Trip;
 import com.team7.mobile.data.entity.User;
+import com.team7.mobile.data.repository.AgentConversationRepository;
 import com.team7.mobile.data.repository.ItineraryItemRepository;
 import com.team7.mobile.data.repository.ItineraryRepository;
 import com.team7.mobile.data.repository.TripRepository;
 import com.team7.mobile.business.util.CurrentUser;
 import com.team7.mobile.business.agent.AgentOrchestrator;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -35,21 +40,27 @@ public class TripService {
     private final TripRepository tripRepository;
     private final ItineraryRepository itineraryRepository;
     private final ItineraryItemRepository itineraryItemRepository;
+    private final AgentConversationRepository agentConversationRepository;
     private final CurrentUser currentUser;
     private final AgentOrchestrator agentOrchestrator;
+    private final BookingService bookingService;
     private final ObjectMapper objectMapper;
 
     public TripService(TripRepository tripRepository,
                        ItineraryRepository itineraryRepository,
                        ItineraryItemRepository itineraryItemRepository,
+                       AgentConversationRepository agentConversationRepository,
                        CurrentUser currentUser,
                        AgentOrchestrator agentOrchestrator,
+                       BookingService bookingService,
                        ObjectMapper objectMapper) {
         this.tripRepository = tripRepository;
         this.itineraryRepository = itineraryRepository;
         this.itineraryItemRepository = itineraryItemRepository;
+        this.agentConversationRepository = agentConversationRepository;
         this.currentUser = currentUser;
         this.agentOrchestrator = agentOrchestrator;
+        this.bookingService = bookingService;
         this.objectMapper = objectMapper;
     }
 
@@ -84,6 +95,17 @@ public class TripService {
     public TripDTO getTripById(Long tripId) {
         Trip trip = findOwnedTrip(tripId);
         return toDTO(trip);
+    }
+
+    /**
+     * Throws if the current user doesn't own tripId - used by
+     * AgentChatService.getTask() so that agent-chat/agent-modify task
+     * results (which can contain another traveler's itinerary and, after a
+     * booking, passenger name/email) aren't readable by any authenticated
+     * user who happens to know or guess a taskId, not just the trip's owner.
+     */
+    public void assertTripOwnership(Long tripId) {
+        findOwnedTrip(tripId);
     }
 
     /**
@@ -138,14 +160,31 @@ public class TripService {
      * Agent conversation for a trip.
      * Flow: extract requirements → if missing fields, ask clarifying question;
      * otherwise generate itinerary and return it.
-     * Backlog #4 + #6.
+     * Stateful across calls: prior turns for this (user, trip) are loaded from
+     * agent_conversations and sent along so a follow-up like "make it 3000
+     * instead" resolves against what was said earlier, not evaluated in
+     * isolation; both the user's message and the Agent's reply are then
+     * appended to that same history.
+     * Backlog #4 + #6 + #10 (conversation continuity).
      */
+    // deleteByTripId() inside saveItinerary() is a modifying derived query
+    // that needs a writable transaction to run (open-in-view is disabled) -
+    // without this, it throws TransactionRequiredException. Wrapping the
+    // whole method also means a saveItinerary() failure rolls back the
+    // trip.setStatus/setAgentItineraryJson update above it instead of
+    // leaving the trip row committed with no matching itinerary rows.
+    @Transactional
     @SuppressWarnings("unchecked")
     public Map<String, Object> agentChat(Long tripId, String message) {
-        findOwnedTrip(tripId);  // auth check
+        Trip trip = findOwnedTrip(tripId);  // auth check
+        User user = currentUser.get();
+
+        ConversationContext context = buildConversationContext(user, trip);
+        saveConversationTurn(user, trip, AgentConversation.Role.USER, message);
 
         // Step 1: extract structured trip requirements from free text
-        Map<String, Object> extracted = agentOrchestrator.extractRequirements(message);
+        Map<String, Object> extracted = agentOrchestrator.extractRequirements(
+                message, context.recentHistory(), context.summary());
 
         List<String> missing = (List<String>) extracted.get("missingFields");
         if (missing != null && !missing.isEmpty()) {
@@ -153,6 +192,8 @@ public class TripService {
             result.put("status", "NEEDS_MORE_INFO");
             result.put("missingFields", missing);
             result.put("clarifyingQuestion", extracted.get("clarifyingQuestion"));
+            saveConversationTurn(user, trip, AgentConversation.Role.ASSISTANT,
+                    (String) extracted.get("clarifyingQuestion"));
             return result;
         }
 
@@ -169,12 +210,13 @@ public class TripService {
         Map<String, Object> itinerary = agentOrchestrator.generateItinerary(tripData);
 
         // Step 3: persist extracted info + generated itinerary
-        Trip trip = findOwnedTrip(tripId);
+        if (extracted.get("originCity") != null) trip.setOriginCity((String) extracted.get("originCity"));
         if (extracted.get("destination") != null) trip.setDestination((String) extracted.get("destination"));
         if (extracted.get("startDate") != null) trip.setStartDate(LocalDate.parse((String) extracted.get("startDate")));
         if (extracted.get("endDate") != null) trip.setEndDate(LocalDate.parse((String) extracted.get("endDate")));
         if (extracted.get("budgetTotal") != null) trip.setBudgetTotal(new BigDecimal(extracted.get("budgetTotal").toString()));
         trip.setStatus(Trip.TripStatus.PLANNED);
+        trip.setAgentItineraryJson(writeJson(itinerary));
         tripRepository.save(trip);
 
         saveItinerary(trip, itinerary);
@@ -182,7 +224,185 @@ public class TripService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", "ITINERARY_READY");
         result.put("itinerary", itinerary);
+        saveConversationTurn(user, trip, AgentConversation.Role.ASSISTANT,
+                "I've put together a full itinerary for your trip to " + extracted.get("destination") + ".");
         return result;
+    }
+
+    // Mirrors agent-ml-service's config.MAX_CONVERSATION_HISTORY default - the
+    // Agent only ever uses the last N turns anyway, so there's no point
+    // fetching/serializing/sending an unbounded conversation on every call.
+    private static final int MAX_HISTORY_TURNS = 20;
+
+    private record ConversationContext(List<Map<String, String>> recentHistory, String summary) {
+    }
+
+    /**
+     * Builds what gets sent to the Agent for conversation continuity: the
+     * most recent MAX_HISTORY_TURNS turns verbatim, plus a compressed
+     * summary of anything older than that window - without the summary,
+     * facts established many turns back (destination, budget, ...) would
+     * simply be lost once they age out of the verbatim window instead of
+     * being carried forward.
+     * <p>
+     * The summary is cached on the Trip and only recomputed when the window
+     * has actually advanced since it was last computed (tracked via
+     * conversationSummarizedThroughCount) - and even then, only the NEWLY
+     * dropped turns are sent to be folded in, not the entire older history.
+     */
+    private ConversationContext buildConversationContext(User user, Trip trip) {
+        long totalCount = agentConversationRepository.countByUserIdAndTripId(user.getId(), trip.getId());
+        int windowStart = (int) Math.max(0, totalCount - MAX_HISTORY_TURNS);
+
+        List<AgentConversation> recentTurns = agentConversationRepository.findByUserIdAndTripIdOrderByCreatedAtDesc(
+                user.getId(), trip.getId(), org.springframework.data.domain.PageRequest.of(0, MAX_HISTORY_TURNS));
+        java.util.Collections.reverse(recentTurns);
+        List<Map<String, String>> recentHistory = toHistoryPayload(recentTurns);
+
+        String summary = trip.getConversationSummary();
+        int summarizedThrough = trip.getConversationSummarizedThroughCount() != null
+                ? trip.getConversationSummarizedThroughCount() : 0;
+
+        if (windowStart > summarizedThrough) {
+            List<AgentConversation> newlyDroppedTurns = agentConversationRepository
+                    .findByUserIdAndTripIdOrderByCreatedAtAsc(user.getId(), trip.getId(),
+                            org.springframework.data.domain.PageRequest.of(0, windowStart))
+                    .subList(summarizedThrough, windowStart);
+            summary = agentOrchestrator.summarizeConversation(summary, toHistoryPayload(newlyDroppedTurns));
+            trip.setConversationSummary(summary);
+            trip.setConversationSummarizedThroughCount(windowStart);
+            tripRepository.save(trip);
+        }
+
+        return new ConversationContext(recentHistory, summary);
+    }
+
+    private List<Map<String, String>> toHistoryPayload(List<AgentConversation> turns) {
+        return turns.stream()
+                .map(turn -> Map.of(
+                        "role", turn.getRole() == AgentConversation.Role.ASSISTANT ? "assistant" : "user",
+                        "content", turn.getContent()))
+                .collect(Collectors.toList());
+    }
+
+    /** Records one turn of the agent-chat conversation. No-op if content is null (e.g. no clarifying question). */
+    private void saveConversationTurn(User user, Trip trip, AgentConversation.Role role, String content) {
+        if (content == null) return;
+        AgentConversation turn = new AgentConversation();
+        turn.setUser(user);
+        turn.setTrip(trip);
+        turn.setRole(role);
+        turn.setContent(content);
+        agentConversationRepository.save(turn);
+    }
+
+    /**
+     * Books flight + hotel for an owned trip via the Agent, then persists
+     * whichever of the flight/hotel legs succeeded into the bookings table
+     * (via the already-ownership-checked BookingService.createBooking()) so
+     * a completed Agent booking actually shows up on the trip afterwards.
+     * <p>
+     * Synchronous, like the direct /api/agent/book-trip passthrough this
+     * calls through to - full async + conversation-history integration
+     * (matching agentChat()'s pattern) is a separate, larger piece of work
+     * not in scope here.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> bookTrip(Long tripId, Map<String, Object> bookingRequest) {
+        findOwnedTrip(tripId);  // auth check
+
+        Map<String, Object> result = agentOrchestrator.bookTrip(bookingRequest);
+        persistBookingLeg(tripId, "FLIGHT", (Map<String, Object>) result.get("flightResult"));
+        persistBookingLeg(tripId, "HOTEL", (Map<String, Object>) result.get("hotelResult"));
+        return result;
+    }
+
+    /** Persists one leg (flight or hotel) of a book_full_trip result, if that leg actually succeeded. */
+    private void persistBookingLeg(Long tripId, String type, Map<String, Object> legResult) {
+        if (legResult == null || !Boolean.TRUE.equals(legResult.get("success"))) {
+            return;
+        }
+        boolean isFlight = "FLIGHT".equals(type);
+        String bookingRef = isFlight
+                ? (String) legResult.get("bookingReference")
+                : (String) legResult.getOrDefault("hotelConfirmationCode", legResult.get("bookingId"));
+        Object amount = isFlight ? legResult.get("totalAmount") : legResult.get("totalPrice");
+        BigDecimal price = amount != null ? new BigDecimal(amount.toString()) : null;
+        // Duffel's flight booking result doesn't echo back a currency field
+        // (unlike the hotel result) - both Duffel/LiteAPI test-mode content
+        // used by this integration are USD-denominated, so USD is a correct
+        // default here, not a guess.
+        String currency = (String) legResult.getOrDefault("currency", "USD");
+
+        bookingService.createBooking(tripId, type, bookingRef, price, currency);
+    }
+
+    /**
+     * Modifies the trip's existing itinerary via a natural-language change
+     * request (e.g. "find me a cheaper hotel instead"). Requires an
+     * itinerary to already exist (produced by agentChat()) - modify_itinerary
+     * needs the FULL raw itinerary JSON as its starting point (totalCost,
+     * warnings, maxHotelCommuteMinutes, etc.), which the flattened Itinerary/
+     * ItineraryItem rows alone can't reconstruct - see Trip.agentItineraryJson.
+     * Same conversation-history + persistence pattern as agentChat().
+     */
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> modifyItinerary(Long tripId, String userRequest) {
+        Trip trip = findOwnedTrip(tripId);
+        User user = currentUser.get();
+
+        String existingJson = trip.getAgentItineraryJson();
+        if (existingJson == null) {
+            throw new com.team7.mobile.common.exception.BusinessException("NO_ITINERARY",
+                    "This trip doesn't have an itinerary yet - generate one first via agent-chat.", 400);
+        }
+        Map<String, Object> currentItinerary = readJsonMap(existingJson);
+
+        saveConversationTurn(user, trip, AgentConversation.Role.USER, userRequest);
+
+        Map<String, Object> updatedItinerary = agentOrchestrator.modifyItinerary(currentItinerary, userRequest);
+
+        trip.setAgentItineraryJson(writeJson(updatedItinerary));
+        tripRepository.save(trip);
+        saveItinerary(trip, updatedItinerary);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "ITINERARY_UPDATED");
+        result.put("itinerary", updatedItinerary);
+
+        // The Agent's own warnings note is already a complete, accurate
+        // description of the outcome - including the case where nothing
+        // could actually be changed (e.g. "No more expensive hotel was
+        // found ... remains unchanged"). Stapling "I've updated the
+        // itinerary: " in front of that used to produce a self-contradictory
+        // message (claiming an update happened right before explaining that
+        // it didn't) - verified live via a real modify-itinerary call that
+        // found no cheaper/pricier alternative existed.
+        List<String> warnings = (List<String>) updatedItinerary.get("warnings");
+        String summary = (warnings != null && !warnings.isEmpty())
+                ? warnings.get(warnings.size() - 1)
+                : "I've updated the itinerary as requested.";
+        saveConversationTurn(user, trip, AgentConversation.Role.ASSISTANT, summary);
+
+        return result;
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize itinerary", e);
+        }
+    }
+
+    private Map<String, Object> readJsonMap(String json) {
+        try {
+            return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            throw new com.team7.mobile.common.exception.BusinessException("CORRUPT_ITINERARY",
+                    "Stored itinerary could not be parsed - cannot apply changes.", 500);
+        }
     }
 
     /**
@@ -191,7 +411,14 @@ public class TripService {
      */
     @SuppressWarnings("unchecked")
     private void saveItinerary(Trip trip, Map<String, Object> agentItinerary) {
-        // Replace previous plan
+        // Replace previous plan. ItineraryItem -> Itinerary is a plain
+        // @ManyToOne with no inverse @OneToMany/cascade on Itinerary, so
+        // deleting itineraries first would violate the fk_items_itinerary
+        // foreign key whenever this trip already has a prior itinerary with
+        // items - children must go first.
+        for (Itinerary existing : itineraryRepository.findByTripIdOrderByDayNumber(trip.getId())) {
+            itineraryItemRepository.deleteByItineraryId(existing.getId());
+        }
         itineraryRepository.deleteByTripId(trip.getId());
 
         int dayNumber = 1;
@@ -203,15 +430,20 @@ public class TripService {
             Itinerary itinerary = new Itinerary();
             itinerary.setTrip(trip);
             itinerary.setDayNumber(dayNumber);
-            itinerary.setDate(LocalDate.parse((String) day.getOrDefault("date", trip.getStartDate().toString())));
+            // NOT day.getOrDefault("date", trip.getStartDate().toString()) - Java
+            // evaluates a getOrDefault's default argument eagerly regardless of
+            // whether the key is present, so that would NPE whenever
+            // trip.getStartDate() is null even though "date" is always set here.
+            String dateStr = (String) day.get("date");
+            itinerary.setDate(LocalDate.parse(dateStr != null ? dateStr : trip.getStartDate().toString()));
             itinerary.setGeneratedByAgent(true);
             itinerary = itineraryRepository.save(itinerary);
 
             saveItem(itinerary, "FLIGHT", day.get("flight"));
             saveItem(itinerary, "HOTEL", day.get("hotel"));
-            saveItem(itinerary, "MEAL", day.get("breakfast"));
-            saveItem(itinerary, "MEAL", day.get("lunch"));
-            saveItem(itinerary, "MEAL", day.get("dinner"));
+            saveItem(itinerary, "RESTAURANT", day.get("breakfast"));
+            saveItem(itinerary, "RESTAURANT", day.get("lunch"));
+            saveItem(itinerary, "RESTAURANT", day.get("dinner"));
             saveItem(itinerary, "ATTRACTION", day.get("attraction"));
 
             dayNumber++;
@@ -233,7 +465,11 @@ public class TripService {
         item.setLocation(str(activity.get("location")));
         item.setBookingRef(str(activity.get("bookingRef")));
         item.setPrice(parsePrice(activity));
-        item.setCurrency(str(activity.getOrDefault("currency", "CNY")));
+        // Agent flight/hotel/restaurant activities never carry a "currency"
+        // key (verified against a real generated itinerary) - Duffel/LiteAPI
+        // test-mode content is USD-denominated, matching the same default
+        // already used in persistBookingLeg() below.
+        item.setCurrency(str(activity.getOrDefault("currency", "USD")));
         // Keep the full raw activity JSON so no Agent data is lost
         try {
             item.setDescription(objectMapper.writeValueAsString(activity));
@@ -288,9 +524,9 @@ public class TripService {
     private Trip findOwnedTrip(Long tripId) {
         Long userId = currentUser.getId();
         Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new RuntimeException("Trip not found: " + tripId));
+                .orElseThrow(() -> new ResourceNotFoundException("Trip", tripId));
         if (!trip.getUser().getId().equals(userId)) {
-            throw new RuntimeException("Not authorized to access trip: " + tripId);
+            throw new ForbiddenException("Not authorized to access trip: " + tripId);
         }
         return trip;
     }
@@ -300,6 +536,7 @@ public class TripService {
                 trip.getId(),
                 trip.getUser().getId(),
                 trip.getTitle(),
+                trip.getOriginCity(),
                 trip.getDestination(),
                 trip.getStartDate(),
                 trip.getEndDate(),
