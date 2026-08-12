@@ -52,7 +52,7 @@ services:
     volumes:
       - app-images:/var/www/adproject-mobile/images
     ports:
-      - "127.0.0.1:8080:8080"                             # localhost only (Nginx proxies)
+      - "0.0.0.0:8080:8080"                               # exposed to network for mobile app access
     networks:
       - mobile-network
 
