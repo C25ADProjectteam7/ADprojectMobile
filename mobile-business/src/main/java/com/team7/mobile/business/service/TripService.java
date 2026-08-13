@@ -363,12 +363,27 @@ public class TripService {
 
         Map<String, Object> updatedItinerary = agentOrchestrator.modifyItinerary(currentItinerary, userRequest);
 
-        trip.setAgentItineraryJson(writeJson(updatedItinerary));
+        // changeApplied is optional in the Agent's response (only
+        // modify_itinerary's prompt asks for it) - treat anything other than
+        // an explicit false as "something changed", so a missing field
+        // doesn't regress older/retried responses to a false "no change".
+        boolean changeApplied = !Boolean.FALSE.equals(updatedItinerary.get("changeApplied"));
+
+        // changeApplied is a one-off result flag describing THIS call, not
+        // itinerary data - persist a copy with it stripped out, so the next
+        // modifyItinerary() call doesn't read it back via currentItinerary
+        // and feed it into the LLM prompt as if it were a real field of the
+        // trip's itinerary (updatedItinerary itself, still carrying the
+        // flag, is kept below for the immediate API response).
+        Map<String, Object> persistedItinerary = new LinkedHashMap<>(updatedItinerary);
+        persistedItinerary.remove("changeApplied");
+
+        trip.setAgentItineraryJson(writeJson(persistedItinerary));
         tripRepository.save(trip);
-        saveItinerary(trip, updatedItinerary);
+        saveItinerary(trip, persistedItinerary);
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("status", "ITINERARY_UPDATED");
+        result.put("status", changeApplied ? "ITINERARY_UPDATED" : "NO_CHANGE_FOUND");
         result.put("itinerary", updatedItinerary);
 
         // The Agent's own warnings note is already a complete, accurate

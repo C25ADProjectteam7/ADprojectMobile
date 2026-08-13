@@ -227,6 +227,21 @@ def _validate_and_normalize_itinerary(
     if not isinstance(warnings, list) or not all(isinstance(warning, str) for warning in warnings):
         raise ValueError("Agent itinerary warnings must be a list of strings")
     itinerary["warnings"] = warnings
+
+    # Only modify_itinerary's assembly prompt asks for this field - generation
+    # has nothing to compare against, so it's optional (and left absent)
+    # there. For modification (existing_itinerary is not None), it's
+    # required and must actually be caught here as a validation failure -
+    # not just type-checked when present - so a dropped field triggers
+    # _assemble_and_validate_itinerary's retry instead of silently reaching
+    # Java, which would otherwise default a missing field to "something
+    # changed" even when the itinerary's own warnings honestly say nothing did.
+    if existing_itinerary is not None:
+        if not isinstance(itinerary.get("changeApplied"), bool):
+            raise ValueError("Agent itinerary changeApplied must be a boolean (required when modifying an itinerary)")
+    elif "changeApplied" in itinerary and not isinstance(itinerary["changeApplied"], bool):
+        raise ValueError("Agent itinerary changeApplied must be a boolean")
+
     return itinerary
 
 async def _execute_tool_calls(
@@ -1062,11 +1077,20 @@ Newly gathered data to use for the change:
 {json.dumps(new_data, indent=2)}
 
 Return the COMPLETE updated itinerary in the same JSON structure as the
-current one (all "dayN" keys, "totalCost", "warnings"). Only modify the
-specific field(s) the traveler asked to change - leave every other field
-exactly as it was in the current itinerary. Recalculate "totalCost" if the
-change affects flight or hotel pricing. Add a note to "warnings" summarizing
-what was changed (e.g. "Hotel changed from X to Y per your request").
+current one (all "dayN" keys, "totalCost", "warnings"), plus one additional
+top-level field: "changeApplied" (true/false). Only modify the specific
+field(s) the traveler asked to change - leave every other field exactly as
+it was in the current itinerary. Recalculate "totalCost" if the change
+affects flight or hotel pricing. Add a note to "warnings" summarizing what
+happened - either what was changed (e.g. "Hotel changed from X to Y per
+your request") or, if the newly gathered data has nothing better than what
+the traveler already has (e.g. they asked for a more expensive/cheaper
+hotel but no other option exists in range), an honest note that nothing
+better was found and the itinerary was left as-is. Set "changeApplied" to
+true only if you actually replaced a flight/hotel/restaurant/attraction
+with a genuinely different one - set it to false if you kept everything
+identical because nothing better was available. Never fabricate a
+different-looking option just to make "changeApplied" true.
 
 The traveler's totalCost figure represents the authoritative USD amount and
 must be recalculated and returned if the change affects flight/hotel pricing.

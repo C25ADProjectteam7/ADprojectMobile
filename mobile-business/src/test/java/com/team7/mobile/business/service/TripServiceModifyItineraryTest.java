@@ -131,4 +131,44 @@ class TripServiceModifyItineraryTest {
         assertEquals(AgentConversation.Role.USER, saved.get(0).getRole());
         assertEquals(AgentConversation.Role.ASSISTANT, saved.get(1).getRole());
     }
+
+    /**
+     * Regression test for a real UX bug found via manual reproduction: when
+     * the Agent can't find anything better (e.g. "a more expensive hotel"
+     * but no pricier option exists in range), it correctly keeps the
+     * itinerary unchanged and says so in warnings - but the response used to
+     * always claim status "ITINERARY_UPDATED" and prefix the summary with
+     * "I've updated the itinerary: ", producing a self-contradictory message.
+     * changeApplied:false should surface as its own status, and the summary
+     * should be the Agent's own honest note verbatim, not stapled behind a
+     * false claim that something changed.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void changeAppliedFalseSurfacesAsNoChangeFoundWithHonestSummary() throws Exception {
+        trip.setAgentItineraryJson("{\"day1\":{\"date\":\"2026-09-10\"},\"totalCostSGD\":500.0,\"warnings\":[]}");
+
+        String honestNote = "No more expensive hotel was found in the available search results. "
+                + "The original hotel (Hotel 81 Kovan) remains unchanged.";
+        Map<String, Object> updated = Map.of(
+                "day1", Map.of("date", "2026-09-10"),
+                "totalCostSGD", 500.0,
+                "warnings", List.of(honestNote),
+                "changeApplied", false
+        );
+        when(agentOrchestrator.modifyItinerary(any(), eq("find me a more expensive hotel")))
+                .thenReturn(updated);
+
+        Map<String, Object> result = tripService.modifyItinerary(42L, "find me a more expensive hotel");
+
+        assertEquals("NO_CHANGE_FOUND", result.get("status"));
+
+        var roleCaptor = org.mockito.ArgumentCaptor.forClass(AgentConversation.class);
+        verify(agentConversationRepository, org.mockito.Mockito.times(2)).save(roleCaptor.capture());
+        AgentConversation assistantTurn = roleCaptor.getAllValues().get(1);
+        assertEquals(AgentConversation.Role.ASSISTANT, assistantTurn.getRole());
+        assertEquals(honestNote, assistantTurn.getContent(),
+                "Summary should be the Agent's own honest note verbatim, not prefixed with a false "
+                        + "\"I've updated the itinerary\" claim.");
+    }
 }
