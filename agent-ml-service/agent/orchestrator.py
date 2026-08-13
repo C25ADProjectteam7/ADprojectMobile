@@ -227,6 +227,36 @@ def _validate_and_normalize_itinerary(
     if not isinstance(warnings, list) or not all(isinstance(warning, str) for warning in warnings):
         raise ValueError("Agent itinerary warnings must be a list of strings")
     itinerary["warnings"] = warnings
+
+    # Only modify_itinerary's assembly prompt asks for this field - generation
+    # has nothing to compare against, so it's optional (and left absent)
+    # there. For modification (existing_itinerary is not None), it's
+    # required and must actually be caught here as a validation failure -
+    # not just type-checked when present - so a dropped field triggers
+    # _assemble_and_validate_itinerary's retry instead of silently reaching
+    # Java, which would otherwise default a missing field to "something
+    # changed" even when the itinerary's own warnings honestly say nothing did.
+    if existing_itinerary is not None:
+        if not isinstance(itinerary.get("changeApplied"), bool):
+            raise ValueError("Agent itinerary changeApplied must be a boolean (required when modifying an itinerary)")
+        # changeApplied=false without a warning explaining why leaves the
+        # traveler with an unexplained non-change - the assembly prompt asks
+        # for this note, but nothing before this line actually enforced the
+        # LLM followed through, so a genuinely empty warnings list used to
+        # slip past validation and reach Java, which then shows a generic
+        # "no changes were needed" instead of the specific reason (e.g.
+        # "already the most expensive option available"). Rejecting here
+        # triggers _assemble_and_validate_itinerary's retry, which - same as
+        # every other validation failure in this function - often succeeds
+        # on a second attempt against the same already-gathered data.
+        if itinerary["changeApplied"] is False and not warnings:
+            raise ValueError(
+                "Agent itinerary changeApplied is false but warnings is empty - "
+                "a note explaining why nothing was changed is required"
+            )
+    elif "changeApplied" in itinerary and not isinstance(itinerary["changeApplied"], bool):
+        raise ValueError("Agent itinerary changeApplied must be a boolean")
+
     return itinerary
 
 async def _execute_tool_calls(
@@ -450,95 +480,6 @@ async def summarize_conversation(previous_summary: str | None, turns: list[dict]
     ]
     summary = await chat_completion(messages, temperature=0.2)
     return summary.strip()
-
-
-def _build_search_prompt(trip_requirements: dict) -> str:
-    """System prompt for Backlog #5: guides the agent to search flights and hotels
-    within the traveler's confirmed budget and dates"""
-    return f"""You are a business travel planning assistant with access to flight and
-hotel search tools. The traveler's confirmed requirements are:
-- Origin city: {trip_requirements['originCity']}
-- Destination: {trip_requirements['destination']}
-- Start date: {trip_requirements['startDate']}
-- End date: {trip_requirements['endDate']}
-- Total budget: {trip_requirements['budgetTotal']}
-- Preferences: {trip_requirements.get('preferences', [])}
-
-Use the available tools to search for flights and hotels that fit within budget.
-Call search_flights first, then search_hotels. After both searches complete,
-summarize the results in plain text - do not fabricate data you did not receive
-from a tool call.
-
-Do NOT call book_flight or book_hotel at this stage - this is search only,
-not booking.
-"""
-
-
-async def search_travel_options(trip_requirements: dict) -> dict:
-    """Backlog #5: drives the tool-calling loop - search_flights then search_hotels."""
-    origin_city_name = trip_requirements['originCity']  # keep original name before IATA conversion
-    origin_code = await resolve_city_to_iata(origin_city_name)
-    dest_code = await resolve_city_to_iata(trip_requirements['destination'])
-    guest_nationality = await resolve_city_to_country_code(origin_city_name) or "SG"
-
-    if not origin_code or not dest_code:
-        return {
-            "flights": [],
-            "hotels": [],
-            "summary": f"Could not resolve airport codes for "
-                       f"'{trip_requirements['originCity']}' or "
-                       f"'{trip_requirements['destination']}'. Please provide a more "
-                       f"specific city name.",
-        }
-
-    resolved_requirements = {**trip_requirements, "originCity": origin_code, "destination": dest_code}
-
-    # Build a per-request dispatch table: search_hotels gets guest_nationality
-    # pre-bound, so the LLM never needs to know it exists.
-    tool_dispatch = dict(agent_tools.SEARCH_TOOL_FUNCTIONS)
-    tool_dispatch["search_hotels"] = functools.partial(
-        agent_tools.search_hotels, guest_nationality=guest_nationality
-    )
-
-    messages = [
-        {"role": "system", "content": _build_search_prompt(resolved_requirements)},
-        {"role": "user", "content": "Please search for flight and hotel options for this trip."},
-    ]
-    schemas = agent_tools.get_search_tool_schemas()
-    collected_results = {"search_flights": [], "search_hotels": []}
-    tool_call_counts: dict[str, int] = {}
-
-    for _ in range(5):
-        message = await chat_with_tools(messages, schemas)
-
-        if not message.tool_calls:
-            return {
-                "flights": collected_results["search_flights"],
-                "hotels": collected_results["search_hotels"],
-                "summary": message.content,
-            }
-
-
-        messages.append(message.model_dump(exclude_none=True))
-        tool_results = await _execute_tool_calls(message.tool_calls, tool_dispatch, tool_call_counts)
-        for call, func_name, func_args, result in tool_results:
-            if func_name in collected_results:
-                collected_results[func_name].append({
-                    "args": func_args,
-                    "results": result,
-                })
-            messages.append({
-                "role": "tool",
-                "tool_call_id": call.id,
-                "content": json.dumps(result),
-            })
-
-
-    return {
-        "flights": collected_results["search_flights"],
-        "hotels": collected_results["search_hotels"],
-        "summary": "Search completed (loop limit reached).",
-    }
 
 
 def _build_gather_prompt(trip_requirements: dict, num_days: int) -> str:
@@ -855,7 +796,7 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
     gathered = {"search_flights": [], "search_hotels": [], "search_restaurants": [], "search_attractions": []}
     tool_call_counts: dict[str, int] = {}
 
-    for _ in range(4):  # more tool calls expected than the simpler search_travel_options flow
+    for _ in range(4):  # gathering flights+hotel+restaurants+attractions needs more turns than a narrower search
         message = await chat_with_tools(messages, schemas)
 
         if not message.tool_calls:
@@ -967,17 +908,32 @@ async def book_full_trip(itinerary: dict, flight_offer_id: str, hotel_offer_id: 
             if fresh_hotels["hotels"]:
                 hotel_offer_id = fresh_hotels["hotels"][0]["offerId"]
 
+    # email is the traveler's real contact address (this function's own
+    # required parameter) - book_flight_with_retry's email default only
+    # exists for the separate, currently-unreachable LLM-tool-calling
+    # booking path (see its docstring), not for this one.
     flight_result = await book_flight_with_retry(
-        flight_offer_id, passenger_name, passenger_dob, origin, destination, date_str
+        flight_offer_id, passenger_name, passenger_dob, origin, destination, date_str, email=email
     )
     if not flight_result["success"]:
+        # Surface book_flight_with_retry's own specific reason/nextSteps at
+        # the top level too - not just nested under flightResult - so a
+        # caller that only reads the top-level message/nextSteps (the more
+        # obvious place to look) still gets the accurate, specific guidance
+        # (e.g. "price no longer available, search again" vs "timed out,
+        # don't blindly retry - contact support") instead of a generic one
+        # that loses the distinction _summarize_flight_failure computed.
+        # Mirrors the hotel-failure branch below, which already does this.
         return {
             "success": False,
             "stage": "flight",
             "flightResult": flight_result,
             "hotelResult": None,
-            "message": "Flight booking failed. No hotel booking was attempted.",
-            "nextSteps": "Please try booking again, or contact support if this persists.",
+            "message": f"Flight booking failed: {flight_result.get('error', 'Unknown error.')} "
+                       f"No hotel booking was attempted.",
+            "nextSteps": flight_result.get(
+                "nextSteps", "Please try booking again, or contact support if this persists."
+            ),
         }
 
     name_parts = passenger_name.strip().split(" ", 1)
@@ -1062,11 +1018,20 @@ Newly gathered data to use for the change:
 {json.dumps(new_data, indent=2)}
 
 Return the COMPLETE updated itinerary in the same JSON structure as the
-current one (all "dayN" keys, "totalCost", "warnings"). Only modify the
-specific field(s) the traveler asked to change - leave every other field
-exactly as it was in the current itinerary. Recalculate "totalCost" if the
-change affects flight or hotel pricing. Add a note to "warnings" summarizing
-what was changed (e.g. "Hotel changed from X to Y per your request").
+current one (all "dayN" keys, "totalCost", "warnings"), plus one additional
+top-level field: "changeApplied" (true/false). Only modify the specific
+field(s) the traveler asked to change - leave every other field exactly as
+it was in the current itinerary. Recalculate "totalCost" if the change
+affects flight or hotel pricing. Add a note to "warnings" summarizing what
+happened - either what was changed (e.g. "Hotel changed from X to Y per
+your request") or, if the newly gathered data has nothing better than what
+the traveler already has (e.g. they asked for a more expensive/cheaper
+hotel but no other option exists in range), an honest note that nothing
+better was found and the itinerary was left as-is. Set "changeApplied" to
+true only if you actually replaced a flight/hotel/restaurant/attraction
+with a genuinely different one - set it to false if you kept everything
+identical because nothing better was available. Never fabricate a
+different-looking option just to make "changeApplied" true.
 
 The traveler's totalCost figure represents the authoritative USD amount and
 must be recalculated and returned if the change affects flight/hotel pricing.

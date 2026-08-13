@@ -1,5 +1,9 @@
 import asyncio
 import json
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from agent.liteapi_client import search_hotels_by_coordinates, prebook_hotel, book_hotel
 
 

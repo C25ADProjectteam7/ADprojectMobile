@@ -4,7 +4,11 @@ the traveler's original constraints (budget, cuisine, attraction category).
 """
 import asyncio
 import json
+import os
+import sys
 import time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from agent.orchestrator import extract_trip_requirements, generate_itinerary
 from agent.tools import search_hotels, search_restaurants, search_attractions
 

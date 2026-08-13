@@ -4,10 +4,14 @@ instead of manual visual inspection. Uses real API calls throughout (no
 mocks) - run this after any change to orchestrator.py, tools.py, or any of
 the API client modules to catch regressions automatically.
 
-Run: python test_regression_suite.py
+Run (from agent-ml-service/): python manual_tests/test_regression_suite.py
 """
 import asyncio
+import os
+import sys
 import time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from agent.orchestrator import (
     extract_trip_requirements,
     generate_itinerary,
