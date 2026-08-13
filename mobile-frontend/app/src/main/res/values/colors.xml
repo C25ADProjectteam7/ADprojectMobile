@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="travel_navy">#182443</color>
+    <color name="travel_gold">#D6A62F</color>
+    <color name="travel_gold_dark">#A87C16</color>
+    <color name="travel_green">#4D8977</color>
+    <color name="travel_green_soft">#E7F2EE</color>
+    <color name="travel_surface">#F4F6F5</color>
+    <color name="travel_border">#DDE2E1</color>
+    <color name="travel_text">#182443</color>
+    <color name="travel_text_muted">#7C8799</color>
+    <color name="travel_gold_soft">#FFF4D9</color>
+    <color name="travel_navy_soft">#314060</color>
+    <color name="travel_red">#A84444</color>
+    <color name="travel_red_soft">#FBEAEA</color>
+    <color name="white">#FFFFFF</color>
+</resources>

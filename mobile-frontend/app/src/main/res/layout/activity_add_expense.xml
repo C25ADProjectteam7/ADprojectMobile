@@ -1,0 +1,381 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/addExpenseRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/travel_surface"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/page_header_height"
+        android:background="@color/travel_navy"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="@dimen/screen_horizontal_padding">
+
+        <ImageButton
+            android:id="@+id/backButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_header_icon"
+            android:contentDescription="@string/content_description_back"
+            android:padding="9dp"
+            android:src="@drawable/ic_arrow_back" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/add_expense_receipt_title"
+                android:textColor="@color/white"
+                android:textSize="19sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/addExpenseSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/add_expense_subtitle_default"
+                android:textColor="#CAD1E0"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:padding="@dimen/screen_horizontal_padding">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="20dp">
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/white"
+                app:cardCornerRadius="@dimen/card_corner_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/travel_border"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <ImageView
+                        android:id="@+id/receiptPreview"
+                        android:layout_width="match_parent"
+                        android:layout_height="150dp"
+                        android:adjustViewBounds="true"
+                        android:contentDescription="@string/selected_receipt_preview"
+                        android:scaleType="centerCrop"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="54dp"
+                        android:layout_marginTop="10dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/receiptPickerButton"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:text="@string/choose_receipt"
+                            android:textAllCaps="false"
+                            android:textColor="@color/travel_text"
+                            android:textStyle="bold"
+                            app:cornerRadius="8dp"
+                            app:icon="@drawable/ic_upload"
+                            app:iconTint="@color/travel_green"
+                            app:strokeColor="@color/travel_border" />
+
+                        <Space
+                            android:layout_width="8dp"
+                            android:layout_height="1dp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/cameraReceiptButton"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:text="@string/take_receipt_photo"
+                            android:textAllCaps="false"
+                            android:textColor="@color/travel_text"
+                            android:textStyle="bold"
+                            app:cornerRadius="8dp"
+                            app:icon="@drawable/ic_camera"
+                            app:iconTint="@color/travel_green"
+                            app:strokeColor="@color/travel_border" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/receiptSelectedName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center"
+                        android:maxLines="2"
+                        android:textColor="@color/travel_green"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="5dp"
+                        android:gravity="center"
+                        android:text="@string/receipt_picker_support"
+                        android:textColor="@color/travel_text_muted"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/receiptError"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="7dp"
+                        android:gravity="center"
+                        android:text="@string/receipt_required"
+                        android:textColor="#B3261E"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                app:cardBackgroundColor="@color/white"
+                app:cardCornerRadius="@dimen/card_corner_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/travel_border"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/card_internal_padding">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/expense_details_label"
+                        android:textColor="@color/travel_text_muted"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        style="@style/TravelHubFieldLabel"
+                        android:layout_marginTop="16dp"
+                        android:text="@string/merchant" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/merchantInputLayout"
+                        style="@style/TravelHubFieldContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/merchantInput"
+                            style="@style/TravelHubFieldInput"
+                            android:hint="@string/merchant_hint"
+                            android:inputType="textCapWords" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/TravelHubFieldLabel"
+                                android:text="@string/date" />
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:id="@+id/dateInputLayout"
+                                style="@style/TravelHubFieldContainer"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/dateInput"
+                                    style="@style/TravelHubFieldInput"
+                                    android:clickable="true"
+                                    android:cursorVisible="false"
+                                    android:focusable="false"
+                                    android:inputType="none" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                        </LinearLayout>
+
+                        <Space
+                            android:layout_width="10dp"
+                            android:layout_height="1dp" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/TravelHubFieldLabel"
+                                android:text="@string/amount_sgd" />
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:id="@+id/amountInputLayout"
+                                style="@style/TravelHubFieldContainer"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                app:prefixText="S$ ">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/amountInput"
+                                    style="@style/TravelHubFieldInput"
+                                    android:hint="@string/amount_hint"
+                                    android:inputType="numberDecimal" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        style="@style/TravelHubFieldLabel"
+                        android:layout_marginTop="14dp"
+                        android:text="@string/category" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/categoryInputLayout"
+                        style="@style/TravelHubFieldContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        app:endIconMode="dropdown_menu">
+
+                        <AutoCompleteTextView
+                            android:id="@+id/categoryInput"
+                            style="@style/TravelHubFieldInput"
+                            android:hint="@string/category_hint"
+                            android:inputType="none" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView
+                        style="@style/TravelHubFieldLabel"
+                        android:layout_marginTop="14dp"
+                        android:text="@string/expense_notes_optional" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/TravelHubFieldContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/notesInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="82dp"
+                            android:gravity="top|start"
+                            android:hint="@string/expense_notes_hint"
+                            android:inputType="textCapSentences|textMultiLine"
+                            android:padding="14dp"
+                            android:textColor="@color/travel_text"
+                            android:textColorHint="@color/travel_text_muted"
+                            android:textSize="14sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:lineSpacingExtra="2dp"
+                android:text="@string/expense_upload_notice"
+                android:textColor="@color/travel_text_muted"
+                android:textSize="11sp" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="18dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/submitExpenseButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="@string/submit_for_reimbursement"
+                    android:textAllCaps="false"
+                    android:textColor="@color/white"
+                    android:textStyle="bold"
+                    app:backgroundTint="@color/travel_gold"
+                    app:cornerRadius="8dp" />
+
+                <ProgressBar
+                    android:id="@+id/submissionProgress"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center_vertical|end"
+                    android:layout_marginEnd="18dp"
+                    android:indeterminateTint="@color/white"
+                    android:visibility="gone" />
+            </FrameLayout>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/addExpenseBottomNavigation"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/bottom_navigation_height"
+        android:background="@color/white"
+        android:elevation="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        app:itemIconSize="22dp"
+        app:itemIconTint="@color/bottom_navigation_tint"
+        app:itemRippleColor="@color/travel_gold_soft"
+        app:itemTextColor="@color/bottom_navigation_tint"
+        app:labelVisibilityMode="labeled"
+        app:menu="@menu/menu_bottom_navigation" />
+</LinearLayout>
