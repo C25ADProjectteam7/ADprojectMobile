@@ -708,13 +708,25 @@ def _ensure_offer_ids(itinerary: dict, gathered: dict) -> None:
     uncorrected)."""
     hotel_offers = {}
     for call in gathered.get("search_hotels", []):
-        for h in call["results"].get("hotels", []):
-            hotel_offers[h["name"]] = h.get("offerId")
+        # A failed tool call stores {"error": {...}} instead of a result list -
+        # iterating that dict yields its key strings ("error"), which then blow
+        # up on .get(). Guard against both the failure shape and non-dict entries.
+        results = call.get("results", {})
+        entries = results.get("hotels", []) if isinstance(results, dict) else results
+        if not isinstance(entries, list):
+            continue
+        for h in entries:
+            if isinstance(h, dict) and isinstance(h.get("name"), str):
+                hotel_offers[h["name"]] = h.get("offerId")
 
     flight_offers = {}
     for call in gathered.get("search_flights", []):
-        for f in call["results"]:
-            flight_offers[f["flightNumber"]] = f.get("offerId")
+        results = call.get("results", [])
+        if not isinstance(results, list):
+            continue
+        for f in results:
+            if isinstance(f, dict) and isinstance(f.get("flightNumber"), str):
+                flight_offers[f["flightNumber"]] = f.get("offerId")
 
     for key, day in itinerary.items():
         if not key.startswith("day") or not isinstance(day, dict):

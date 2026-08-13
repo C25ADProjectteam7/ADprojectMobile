@@ -22,6 +22,31 @@ client = AsyncOpenAI(
 _RETRY_ON_TIMEOUT = retry_on_timeout(max_attempts=3, exceptions=openai.APITimeoutError)
 
 
+def retry_on_server_errors(max_attempts: int = 3, base_delay: float = 1.0):
+    """Retries DeepSeek calls that fail with 5xx / 429 (server-side hiccups).
+    DeepSeek intermittently returns 500 'internal error - contact support'
+    even for well-formed requests; chat completions are side-effect-free so
+    retrying is always safe here (never apply this pattern to booking calls)."""
+    import functools
+    import asyncio
+
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_attempts):
+                try:
+                    return await func(*args, **kwargs)
+                except (openai.InternalServerError, openai.RateLimitError) as e:
+                    last_exception = e
+                    if attempt < max_attempts - 1:
+                        await asyncio.sleep(base_delay * (2 ** attempt))
+            raise last_exception
+        return wrapper
+    return decorator
+
+
+@retry_on_server_errors()
 @_RETRY_ON_TIMEOUT
 async def chat_completion(messages: list[dict], temperature: float = 0.3) -> str:
     """Basic exchange: pass OpenAI-format messages, get back plain text"""
@@ -33,6 +58,7 @@ async def chat_completion(messages: list[dict], temperature: float = 0.3) -> str
     return response.choices[0].message.content
 
 
+@retry_on_server_errors()
 @_RETRY_ON_TIMEOUT
 async def chat_json(messages: list[dict], temperature: float = 0.2) -> str:
     """Forced JSON output: for structured-result scenarios (extraction, itinerary generation)"""
@@ -45,6 +71,7 @@ async def chat_json(messages: list[dict], temperature: float = 0.2) -> str:
     return response.choices[0].message.content
 
 
+@retry_on_server_errors()
 @_RETRY_ON_TIMEOUT
 async def chat_with_tools(messages: list[dict], tools: list[dict], temperature: float = 0.3):
     """Backlog #5/#6/#8/#10: message + tool definitions, model decides which tool(s) to call.
