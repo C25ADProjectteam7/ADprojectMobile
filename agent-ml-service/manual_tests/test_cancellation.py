@@ -1,5 +1,9 @@
 import asyncio
 import json
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from agent.duffel_client import search_flights, book_flight, cancel_flight_booking
 from agent.liteapi_client import search_hotels_by_coordinates, book_hotel_with_retry, cancel_hotel_booking
 

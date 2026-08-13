@@ -4,7 +4,7 @@ a real user would talk to the Agent. All API calls are real (DeepSeek,
 Duffel, LiteAPI, Google Places, Frankfurter) - nothing is mocked or
 pre-scripted.
 
-Run: python test_interactive.py
+Run (from agent-ml-service/): python manual_tests/test_interactive.py
 Type your request when prompted. If info is missing, the Agent will ask a
 follow-up question - keep typing your answers until it generates an
 itinerary. Then you'll be asked to confirm before it books anything for real
@@ -12,6 +12,10 @@ itinerary. Then you'll be asked to confirm before it books anything for real
 """
 import asyncio
 import json
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from agent.orchestrator import extract_trip_requirements, generate_itinerary
 from agent.tools import book_flight, book_hotel
 

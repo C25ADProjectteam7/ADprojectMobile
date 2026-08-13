@@ -113,8 +113,17 @@ public class TripService {
      */
     public TripDetailDTO getTripDetail(Long tripId) {
         Trip trip = findOwnedTrip(tripId);
-        List<ItineraryDTO> itineraries = itineraryRepository.findByTripIdOrderByDayNumber(tripId)
-                .stream().map(this::toItineraryDTO)
+        List<Itinerary> dayItineraries = itineraryRepository.findByTripIdOrderByDayNumber(tripId);
+
+        // One batch query for every day's items instead of one query per day
+        // (findByItineraryId(id) called N times in a loop) - a 7-day trip
+        // used to be 1+7 queries here instead of 1+1.
+        List<Long> itineraryIds = dayItineraries.stream().map(Itinerary::getId).collect(Collectors.toList());
+        Map<Long, List<ItineraryItem>> itemsByItineraryId = itineraryItemRepository.findByItineraryIdIn(itineraryIds)
+                .stream().collect(Collectors.groupingBy(item -> item.getItinerary().getId()));
+
+        List<ItineraryDTO> itineraries = dayItineraries.stream()
+                .map(itinerary -> toItineraryDTO(itinerary, itemsByItineraryId.getOrDefault(itinerary.getId(), List.of())))
                 .collect(Collectors.toList());
         return new TripDetailDTO(
                 trip.getId(), trip.getTitle(), trip.getDestination(),
@@ -323,9 +332,18 @@ public class TripService {
             return;
         }
         boolean isFlight = "FLIGHT".equals(type);
+        // NOT Map.getOrDefault(...): liteapi_client.book_hotel() always sets
+        // "hotelConfirmationCode" in its return dict (via data.get(...)), so
+        // the key is always PRESENT in the JSON that reaches here - if
+        // LiteAPI just hasn't issued a confirmation code yet (a real,
+        // observed pattern for hotel bookings, not hypothetical), that's
+        // "present mapped to null", which getOrDefault does NOT fall back
+        // on. Losing bookingRef entirely on a successful hotel booking would
+        // leave the traveler with a confirmed reservation and no reference
+        // to look it up by, so this must fall back to bookingId either way.
         String bookingRef = isFlight
                 ? (String) legResult.get("bookingReference")
-                : (String) legResult.getOrDefault("hotelConfirmationCode", legResult.get("bookingId"));
+                : (String) firstNonNull(legResult.get("hotelConfirmationCode"), legResult.get("bookingId"));
         Object amount = isFlight ? legResult.get("totalAmount") : legResult.get("totalPrice");
         BigDecimal price = amount != null ? new BigDecimal(amount.toString()) : null;
         // Duffel's flight booking result doesn't echo back a currency field
@@ -363,10 +381,13 @@ public class TripService {
 
         Map<String, Object> updatedItinerary = agentOrchestrator.modifyItinerary(currentItinerary, userRequest);
 
-        // changeApplied is optional in the Agent's response (only
-        // modify_itinerary's prompt asks for it) - treat anything other than
-        // an explicit false as "something changed", so a missing field
-        // doesn't regress older/retried responses to a false "no change".
+        // orchestrator.py's _validate_and_normalize_itinerary now requires
+        // changeApplied to be a real boolean whenever existing_itinerary is
+        // passed (i.e. always, on this modify path) - a missing/malformed
+        // value fails validation and retries there instead of ever reaching
+        // this line. Still treating anything other than an explicit false as
+        // "something changed" costs nothing and protects against an older
+        // agent-ml-service build that predates that validation.
         boolean changeApplied = !Boolean.FALSE.equals(updatedItinerary.get("changeApplied"));
 
         // changeApplied is a one-off result flag describing THIS call, not
@@ -397,7 +418,9 @@ public class TripService {
         List<String> warnings = (List<String>) updatedItinerary.get("warnings");
         String summary = (warnings != null && !warnings.isEmpty())
                 ? warnings.get(warnings.size() - 1)
-                : "I've updated the itinerary as requested.";
+                : (changeApplied
+                        ? "I've updated the itinerary as requested."
+                        : "No changes were needed - your itinerary already met the request.");
         saveConversationTurn(user, trip, AgentConversation.Role.ASSISTANT, summary);
 
         return result;
@@ -475,9 +498,28 @@ public class TripService {
         item.setItinerary(itinerary);
         item.setType(ItineraryItem.ItemType.valueOf(type));
         item.setTitle(extractTitle(activity));
-        item.setStartTime(parseDateTime(activity.get("startTime")));
-        item.setEndTime(parseDateTime(activity.get("endTime")));
-        item.setLocation(str(activity.get("location")));
+        // Flight activities never carry a "startTime"/"endTime" key - Duffel's
+        // fields (preserved verbatim per the assembly prompt) are named
+        // "departureTime"/"arrivalTime" instead (verified against a real
+        // generated itinerary). Without this fallback, every flight's
+        // startTime/endTime silently persisted as null. Hotel/restaurant/
+        // attraction activities have none of these four keys at all - this
+        // remains a no-op (null) for them, same as before.
+        // NOT Map.getOrDefault(key, ...) - getOrDefault only falls back when
+        // the key is entirely ABSENT, not when it's present mapped to null
+        // (Jackson deserializes a JSON "startTime": null into exactly that:
+        // the key present, value null). firstNonNull's plain .get() + null
+        // check treats "absent" and "present-but-null" the same way, so the
+        // fallback still kicks in either way.
+        item.setStartTime(parseDateTime(firstNonNull(activity.get("startTime"), activity.get("departureTime"))));
+        item.setEndTime(parseDateTime(firstNonNull(activity.get("endTime"), activity.get("arrivalTime"))));
+        // Agent activities never carry a "location" key - hotel/restaurant/
+        // attraction data uses "address" instead (verified against a real
+        // generated itinerary); flight has no address-equivalent single
+        // field (only separate "origin"/"destination" IATA codes), so this
+        // stays null for flights rather than fabricating a value that was
+        // never actually in the source data.
+        item.setLocation(str(firstNonNull(activity.get("location"), activity.get("address"))));
         item.setBookingRef(str(activity.get("bookingRef")));
         item.setPrice(parsePrice(activity));
         // Agent flight/hotel/restaurant activities never carry a "currency"
@@ -504,13 +546,22 @@ public class TripService {
 
     private String str(Object v) { return v != null ? String.valueOf(v) : null; }
 
+    private Object firstNonNull(Object primary, Object fallback) { return primary != null ? primary : fallback; }
+
     private LocalDateTime parseDateTime(Object v) {
         if (v == null) return null;
         try { return LocalDateTime.parse(String.valueOf(v)); } catch (Exception e) { return null; }
     }
 
     private BigDecimal parsePrice(Map<String, Object> activity) {
-        for (String key : new String[]{"price", "totalPrice", "amount"}) {
+        // "pricePerNight" is hotel's actual field name (verified against a
+        // real generated itinerary) - without it, none of "price"/
+        // "totalPrice"/"amount" ever matches a hotel activity, so every
+        // hotel ItineraryItem silently persisted with price=null even though
+        // real per-night pricing was right there in the source data. Each
+        // day's hotel ItineraryItem represents one night of the stay, so
+        // "pricePerNight" is the semantically correct value to use as-is.
+        for (String key : new String[]{"price", "totalPrice", "amount", "pricePerNight"}) {
             Object v = activity.get(key);
             if (v != null) {
                 try { return new BigDecimal(v.toString()); } catch (Exception e) { /* ignore */ }
@@ -519,9 +570,8 @@ public class TripService {
         return null;
     }
 
-    private ItineraryDTO toItineraryDTO(Itinerary itinerary) {
-        List<ItineraryItemDTO> items = itineraryItemRepository.findByItineraryId(itinerary.getId())
-                .stream().map(this::toItemDTO)
+    private ItineraryDTO toItineraryDTO(Itinerary itinerary, List<ItineraryItem> itineraryItems) {
+        List<ItineraryItemDTO> items = itineraryItems.stream().map(this::toItemDTO)
                 .collect(Collectors.toList());
         return new ItineraryDTO(itinerary.getId(), itinerary.getDayNumber(), itinerary.getDate(),
                 itinerary.getGeneratedByAgent(), items);

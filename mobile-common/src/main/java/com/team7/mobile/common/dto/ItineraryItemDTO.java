@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 public class ItineraryItemDTO {
 
     private Long id;
-    private String type;          // FLIGHT / HOTEL / MEAL / ATTRACTION / TRANSPORT / MEETING
+    private String type;          // FLIGHT / HOTEL / RESTAURANT / ATTRACTION / TRANSPORT / MEETING
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private String title;

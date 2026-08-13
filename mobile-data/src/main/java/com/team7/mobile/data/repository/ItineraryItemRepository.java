@@ -10,5 +10,7 @@ public interface ItineraryItemRepository extends JpaRepository<ItineraryItem, Lo
 
     List<ItineraryItem> findByItineraryId(Long itineraryId);
 
+    List<ItineraryItem> findByItineraryIdIn(List<Long> itineraryIds);
+
     void deleteByItineraryId(Long itineraryId);
 }
