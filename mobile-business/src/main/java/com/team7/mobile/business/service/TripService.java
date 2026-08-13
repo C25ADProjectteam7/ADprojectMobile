@@ -474,16 +474,21 @@ public class TripService {
             // whether the key is present, so that would NPE whenever
             // trip.getStartDate() is null even though "date" is always set here.
             String dateStr = (String) day.get("date");
-            itinerary.setDate(LocalDate.parse(dateStr != null ? dateStr : trip.getStartDate().toString()));
+            LocalDate dayDate = LocalDate.parse(dateStr != null ? dateStr : trip.getStartDate().toString());
+            itinerary.setDate(dayDate);
             itinerary.setGeneratedByAgent(true);
             itinerary = itineraryRepository.save(itinerary);
 
-            saveItem(itinerary, "FLIGHT", day.get("flight"));
-            saveItem(itinerary, "HOTEL", day.get("hotel"));
-            saveItem(itinerary, "RESTAURANT", day.get("breakfast"));
-            saveItem(itinerary, "RESTAURANT", day.get("lunch"));
-            saveItem(itinerary, "RESTAURANT", day.get("dinner"));
-            saveItem(itinerary, "ATTRACTION", day.get("attraction"));
+            // Pass dayDate explicitly instead of reading itinerary.getDate()
+            // inside saveItem - a mocked repository's save() returns null in
+            // tests, and calling null.getDate() there caused NPEs. The date
+            // is a plain value here regardless of what save() returns.
+            saveItem(itinerary, "FLIGHT", day.get("flight"), dayDate);
+            saveItem(itinerary, "HOTEL", day.get("hotel"), dayDate);
+            saveItem(itinerary, "RESTAURANT", day.get("breakfast"), dayDate);
+            saveItem(itinerary, "RESTAURANT", day.get("lunch"), dayDate);
+            saveItem(itinerary, "RESTAURANT", day.get("dinner"), dayDate);
+            saveItem(itinerary, "ATTRACTION", day.get("attraction"), dayDate);
 
             dayNumber++;
         }
@@ -491,7 +496,7 @@ public class TripService {
 
     /** Persist one activity object (or skip if null) — keeps raw JSON in description. */
     @SuppressWarnings("unchecked")
-    private void saveItem(Itinerary itinerary, String type, Object activityObj) {
+    private void saveItem(Itinerary itinerary, String type, Object activityObj, LocalDate dayDate) {
         if (!(activityObj instanceof Map)) return;
         Map<String, Object> activity = (Map<String, Object>) activityObj;
 
@@ -512,8 +517,8 @@ public class TripService {
         // the key present, value null). firstNonNull's plain .get() + null
         // check treats "absent" and "present-but-null" the same way, so the
         // fallback still kicks in either way.
-        item.setStartTime(parseActivityTime(firstNonNull(activity.get("startTime"), activity.get("departureTime")), itinerary.getDate()));
-        item.setEndTime(parseActivityTime(firstNonNull(activity.get("endTime"), activity.get("arrivalTime")), itinerary.getDate()));
+        item.setStartTime(parseActivityTime(firstNonNull(activity.get("startTime"), activity.get("departureTime")), dayDate));
+        item.setEndTime(parseActivityTime(firstNonNull(activity.get("endTime"), activity.get("arrivalTime")), dayDate));
         // Agent activities never carry a "location" key - hotel/restaurant/
         // attraction data uses "address" instead (verified against a real
         // generated itinerary); flight has no address-equivalent single
