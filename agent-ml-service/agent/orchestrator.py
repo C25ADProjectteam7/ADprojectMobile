@@ -579,6 +579,11 @@ Rules:
 - Put the outbound flight on day1, the return flight on the last day ({num_days}).
 - Hotel applies to every day EXCEPT the departure day (the traveler checks out
   that morning).
+- EVERY activity object (flight, hotel, breakfast, attraction, lunch, dinner)
+  MUST include a "startTime" field formatted as "HH:MM" (24-hour clock).
+  Hotel startTime is the standard check-in time (e.g. "14:00"); hotel must also
+  include "endTime" as the check-out time. Derive meal/attraction startTime
+  from the buffer logic below - never leave it out, never output null.
 
 Meal/attraction scheduling MUST be computed from actual flight times using the
 buffer logic below - do not guess based on the departure/arrival time alone.

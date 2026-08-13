@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -511,8 +512,8 @@ public class TripService {
         // the key present, value null). firstNonNull's plain .get() + null
         // check treats "absent" and "present-but-null" the same way, so the
         // fallback still kicks in either way.
-        item.setStartTime(parseDateTime(firstNonNull(activity.get("startTime"), activity.get("departureTime"))));
-        item.setEndTime(parseDateTime(firstNonNull(activity.get("endTime"), activity.get("arrivalTime"))));
+        item.setStartTime(parseActivityTime(firstNonNull(activity.get("startTime"), activity.get("departureTime")), itinerary.getDate()));
+        item.setEndTime(parseActivityTime(firstNonNull(activity.get("endTime"), activity.get("arrivalTime")), itinerary.getDate()));
         // Agent activities never carry a "location" key - hotel/restaurant/
         // attraction data uses "address" instead (verified against a real
         // generated itinerary); flight has no address-equivalent single
@@ -547,6 +548,27 @@ public class TripService {
     private String str(Object v) { return v != null ? String.valueOf(v) : null; }
 
     private Object firstNonNull(Object primary, Object fallback) { return primary != null ? primary : fallback; }
+
+    /**
+     * Parses an activity time. Accepts either a full ISO datetime or a bare
+     * "HH:MM" (which the Agent's assembly prompt now mandates for every
+     * activity) - the bare form is combined with the day's date. Returns null
+     * when the value is missing/unparseable rather than throwing.
+     */
+    private LocalDateTime parseActivityTime(Object v, LocalDate dayDate) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        try {
+            return LocalDateTime.parse(s);
+        } catch (Exception e) {
+            try {
+                return LocalDateTime.of(dayDate != null ? dayDate : LocalDate.now(), LocalTime.parse(s));
+            } catch (Exception e2) {
+                return null;
+            }
+        }
+    }
 
     private LocalDateTime parseDateTime(Object v) {
         if (v == null) return null;
