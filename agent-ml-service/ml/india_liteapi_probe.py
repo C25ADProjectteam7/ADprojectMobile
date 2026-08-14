@@ -107,6 +107,7 @@ async def get_fair_price_probe(hotel_id: str, hotel_name: str, check_in: str) ->
         "hotelIds": [hotel_id],
         "occupancies": [{"adults": PROBE_ADULTS}],   # 1 object == 1 room
         "currency": PROBE_CURRENCY,
+	"guestNationality": "IN",
         "checkin": check_in,
         "checkout": check_out,
         "roomMapping": False,
