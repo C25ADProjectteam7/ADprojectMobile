@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="4dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/agent_chat_explanation"
+        android:textColor="@color/travel_text_muted"
+        android:textSize="13sp" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/agentMessageInputLayout"
+        style="@style/TravelHubFieldContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/agentMessageInput"
+            style="@style/TravelHubFieldInput"
+            android:layout_height="96dp"
+            android:gravity="top|start"
+            android:hint="@string/agent_chat_hint"
+            android:inputType="textCapSentences|textMultiLine"
+            android:maxLines="4"
+            android:paddingTop="13dp" />
+    </com.google.android.material.textfield.TextInputLayout>
+</LinearLayout>

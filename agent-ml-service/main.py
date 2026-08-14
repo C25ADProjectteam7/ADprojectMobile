@@ -8,14 +8,24 @@ Provides two capabilities to the Spring Boot backend:
 2. ML inference: price prediction + intelligent budget allocation
 
 API endpoints:
-- GET  /health                        → health check                           [implemented]
-- POST /api/ml/predict-hotel-price    → hotel price prediction (mock)          [implemented]
-- POST /api/agent/generate-itinerary  → generate full itinerary                [planned — not yet implemented or routed]
-- POST /api/agent/chat                → conversational trip modification       [planned — not yet implemented or routed]
-- POST /api/ml/allocate-budget        → budget allocation                     [planned — not yet implemented or routed]
+- POST /api/agent/generate-itinerary  → generate full itinerary
+- POST /api/agent/chat                → conversational trip modification
+- POST /api/ml/predict-hotel-price    → hotel price prediction (V1)
+- POST /api/ml/v2/hotel-price         → India hotel fair-price verdict (V2)
+- GET  /health                        → health check
 """
 
+import asyncio
+import logging
 from fastapi import FastAPI
+from agent.routes import router as agent_router
+from agent.task_manager import start_cleanup_loop
+from ml.routes import router as ml_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = FastAPI(
     title="Team7 Agent & ML Service",
@@ -23,15 +33,30 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+from fastapi.middleware.cors import CORSMiddleware
+
+# 加在 app = FastAPI(...) 之后
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # demo only - don't ship this to production
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 @app.get("/health")
 async def health_check():
     """Health check — used by Spring Boot and Docker Compose healthcheck"""
     return {"status": "healthy", "service": "agent-ml-service"}
 
-from ml.routes import router as ml_router
+app.include_router(agent_router)
 app.include_router(ml_router)
 
-# TODO: register agent routes (from agent.routes import router as agent_router)
+@app.on_event("startup")
+async def startup_event():
+    """Starts the background task-cleanup loop when the app starts."""
+    asyncio.create_task(start_cleanup_loop())
 
 if __name__ == "__main__":
     import uvicorn

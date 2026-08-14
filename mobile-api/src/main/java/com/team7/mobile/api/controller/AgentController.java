@@ -59,4 +59,16 @@ public class AgentController {
         String userRequest = (String) request.get("userRequest");
         return ResponseEntity.ok(agentOrchestrator.modifyItinerary(currentItinerary, userRequest));
     }
+
+    /**
+     * Backlog #9: books flight + hotel together for a previously generated/
+     * modified itinerary. Body must match agent-ml-service's BookTripRequest
+     * (itinerary, flightOfferId, hotelOfferId, passengerName, passengerDob,
+     * email, plus optional origin/destination/date/latitude/longitude/
+     * checkIn/checkOut/budget/guestNationality for stale-offer recovery).
+     */
+    @PostMapping("/book-trip")
+    public ResponseEntity<Map<String, Object>> bookTrip(@RequestBody Map<String, Object> request) {
+        return ResponseEntity.ok(agentOrchestrator.bookTrip(request));
+    }
 }

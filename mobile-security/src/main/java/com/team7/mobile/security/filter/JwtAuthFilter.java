@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -35,13 +36,26 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
             if (jwtTokenProvider.validateToken(token)) {
-                String username = jwtTokenProvider.getUsernameFromToken(token);
+                String subject = jwtTokenProvider.getUsernameFromToken(token);
                 String role = jwtTokenProvider.getRoleFromToken(token);
+                // Compatible with both JWT conventions: our old tokens carried a
+                // "ROLE_" prefix in the claim, the shared/Web contract does not.
+                // Normalize so hasAnyRole("ADMIN", ...) matches either way.
+                if (role != null && !role.startsWith("ROLE_")) {
+                    role = "ROLE_" + role;
+                }
+                // SimpleGrantedAuthority(null/blank) throws IllegalArgumentException
+                // (verified) - a signature-valid token from the Web group's system
+                // with no/blank role claim would otherwise crash this filter for
+                // every request it's presented on, never reaching a controller or
+                // GlobalExceptionHandler. Authenticate with no granted authorities
+                // instead: role-gated endpoints (hasAnyRole(...)) still correctly
+                // reject it, everything else still works.
+                List<SimpleGrantedAuthority> authorities = (role != null && !role.isBlank())
+                        ? List.of(new SimpleGrantedAuthority(role))
+                        : Collections.emptyList();
                 UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(
-                                username, null,
-                                List.of(new SimpleGrantedAuthority(role))
-                        );
+                        new UsernamePasswordAuthenticationToken(subject, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }

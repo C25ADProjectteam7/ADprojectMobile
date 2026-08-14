@@ -78,4 +78,38 @@ public class TripController {
                 "status", "PROCESSING"
         ));
     }
+
+    /**
+     * Modify this trip's existing itinerary via a natural-language change
+     * request — async, same contract as agent-chat.
+     * Body: { "message": "can you find me a cheaper hotel instead?" }
+     * Returns immediately: { "taskId": "...", "status": "PROCESSING" }
+     * Poll GET /api/agent/tasks/{taskId} for the result.
+     * Requires an itinerary to already exist for this trip (via agent-chat).
+     */
+    @PostMapping("/{id}/agent-modify")
+    public ResponseEntity<Map<String, Object>> agentModify(@PathVariable Long id,
+                                                           @RequestBody Map<String, String> body) {
+        String message = body.get("message");
+        String taskId = agentChatService.startModifyTask(id, message);
+        return ResponseEntity.accepted().body(Map.of(
+                "taskId", taskId,
+                "status", "PROCESSING"
+        ));
+    }
+
+    /**
+     * Books flight + hotel for this trip via the Agent (synchronous - see
+     * TripService.bookTrip() for why) and persists whichever leg(s)
+     * succeeded to the bookings table.
+     * Body must match agent-ml-service's BookTripRequest (itinerary,
+     * flightOfferId, hotelOfferId, passengerName, passengerDob, email, plus
+     * optional origin/destination/date/latitude/longitude/checkIn/checkOut/
+     * budget/guestNationality for stale-offer recovery).
+     */
+    @PostMapping("/{id}/book-trip")
+    public ResponseEntity<Map<String, Object>> bookTrip(@PathVariable Long id,
+                                                        @RequestBody Map<String, Object> request) {
+        return ResponseEntity.ok(tripService.bookTrip(id, request));
+    }
 }

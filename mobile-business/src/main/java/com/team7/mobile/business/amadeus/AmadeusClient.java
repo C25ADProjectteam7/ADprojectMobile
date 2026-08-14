@@ -17,8 +17,14 @@ import org.springframework.stereotype.Service;
  * 需在 Amadeus 开发者门户注册获取 API Key + Secret
  * <p>
  * 缓存策略：搜索结果写入 flights/hotels 表，TTL 后自动刷新
+ *
+ * @deprecated Amadeus Self-Service API 已于 2026 年 7 月下线，从未实现过（一直是空壳）。
+ * 航班/酒店搜索现在完全由 agent-ml-service（Python）通过 Duffel（航班）+ LiteAPI（酒店）
+ * 实现，见 agent-ml-service/agent/duffel_client.py 和 agent/liteapi_client.py 里的说明。
+ * 这个类未被任何地方引用（已确认），保留仅作历史记录，不要基于它继续开发。
  */
 // TODO: 实现 OAuth2 认证流程，封装 REST 调用，结果缓存逻辑，限流处理
+@Deprecated
 @Service
 public class AmadeusClient {
 }

@@ -3,6 +3,7 @@ package com.team7.mobile.business.service;
 import com.team7.mobile.common.dto.LoginRequest;
 import com.team7.mobile.common.dto.LoginResponse;
 import com.team7.mobile.common.dto.RegisterRequest;
+import com.team7.mobile.common.exception.BusinessException;
 import com.team7.mobile.data.entity.User;
 import com.team7.mobile.data.repository.UserRepository;
 import com.team7.mobile.security.jwt.JwtTokenProvider;
@@ -39,7 +40,9 @@ public class AuthService {
         );
         User user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        String role = "ROLE_" + user.getRole().name();
+        // Role claim WITHOUT the "ROLE_" prefix — shared JWT contract with the Web group.
+        // Each side's filter adds the prefix when building Spring Security authorities.
+        String role = user.getRole().name();
         String token = jwtTokenProvider.generateToken(request.getUsername(), role);
         return new LoginResponse(token, "Bearer", 86400000L,
                 user.getId(), user.getUsername(), role);
@@ -50,7 +53,7 @@ public class AuthService {
      */
     public void register(RegisterRequest request) {
         if (userRepository.existsByUsername(request.getUsername())) {
-            throw new RuntimeException("Username already exists");
+            throw new BusinessException("USERNAME_TAKEN", "Username already exists", 409);
         }
         User user = new User();
         user.setUsername(request.getUsername());

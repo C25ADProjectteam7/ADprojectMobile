@@ -8,7 +8,7 @@ name: CI/CD Pipeline
 permissions:
   contents: read
   security-events: write
-  actions: write   # required for cache save (otherwise cache is read-only)
+  actions: write # required for cache save (otherwise cache is read-only)
 
 on:
   push:
@@ -17,7 +17,6 @@ on:
     branches: [main, develop]
 
 jobs:
-
   # ============================================================
   # Stage 1: Build
   # ============================================================
@@ -28,12 +27,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.12
-      - run: gradle build -x test --no-daemon
+      # -x spotbugs* : SpotBugs runs only in SAST job (avoid duplicate execution)
+      - run: gradle build -x test -x spotbugsMain -x spotbugsTest --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: spring-boot-jar
@@ -50,8 +50,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.12
@@ -60,8 +60,32 @@ jobs:
         if: success() || failure()
         with:
           name: JUnit Test Results
-          path: '**/build/test-results/test/TEST-*.xml'
+          path: "**/build/test-results/test/TEST-*.xml"
           reporter: java-junit
+
+  # ============================================================
+  # Stage 2b: Agent-ML Service Build & Test (Python)
+  # ============================================================
+  agent-ml-test:
+    name: Agent-ML Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        working-directory: agent-ml-service
+        run: pip install -r requirements.txt
+      - name: Run tests
+        working-directory: agent-ml-service
+        run: |
+          if [ -d "tests" ] && [ "$(ls -A tests 2>/dev/null)" ]; then
+            pip install pytest
+            pytest tests/ -v
+          else
+            echo "No tests found yet in agent-ml-service/tests/ — skipping"
+          fi
 
   # ============================================================
   # Stage 3: SAST
@@ -74,8 +98,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
       # Cache OWASP NVD database (skip GB download after first successful save)
       - uses: actions/cache@v4
         with:
@@ -94,7 +118,7 @@ jobs:
         if: always()
         with:
           name: owasp-dependency-report
-          path: '**/build/reports/dependency-check-*.html'
+          path: "**/build/reports/dependency-check-*.html"
 
   # ============================================================
   # Stage 4: Docker Image Scan
@@ -121,26 +145,55 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       # Build image, scan with Trivy, then push to Docker Hub
-      - uses: docker/build-push-action@v6
+      # Build image (load to local daemon for scanning, do NOT push yet)
+      - uses: docker/build-push-action@v6.19.2
+        with:
+          context: .
+          file: Dockerfile.ci
+          push: false
+          load: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
+
+      # Trivy — container image CVE scanner (scan BEFORE pushing to registry)
+      # NOTE: trivy-action's built-in cache key is HARDCODED to the date
+      # (cache-trivy-<date>, see action.yaml v0.36.0) and it ignores any
+      # cache-key input — so we disable it and manage the DB cache ourselves
+      # with a fixed key to avoid re-downloading the 940MB DB every day.
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/trivy
+          key: cache-trivy-data-${{ runner.os }}-v1
+          restore-keys: cache-trivy-data-${{ runner.os }}-
+
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL"
+          exit-code: "0"
+          cache: "false"
+          cache-dir: .cache/trivy
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache/trivy
+          key: cache-trivy-data-${{ runner.os }}-v1
+
+      # Push only if build + scan steps succeeded
+      - uses: docker/build-push-action@v6.19.2
+        if: success()
         with:
           context: .
           file: Dockerfile.ci
           push: true
-          load: true
+          load: false
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
-
-      # Trivy — container image CVE scanner
-      - uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/adproject-mobile-api:latest
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL'
-          exit-code: '0'
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: "trivy-results.sarif"
 
   # ============================================================
   # Stage 5: Deploy to Digital Ocean (main branch only)
@@ -165,6 +218,7 @@ jobs:
             cd /home/xiazihang/ADprojectMobile
             git pull origin main
             docker compose pull spring-api
+            docker compose build agent-ml
             docker compose up -d
             docker compose ps
             echo "=== DEPLOY COMPLETED ==="

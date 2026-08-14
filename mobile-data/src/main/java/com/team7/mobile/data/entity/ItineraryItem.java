@@ -43,8 +43,14 @@ public class ItineraryItem {
     @Column(precision = 12, scale = 2)
     private BigDecimal price;
 
+    // TripService.saveItem() always overwrites this with an explicit USD
+    // fallback before persisting (matching Booking's own "USD" default and
+    // the USD convention for Duffel/LiteAPI data), so this initializer is
+    // currently dead - kept consistent with that convention rather than
+    // "CNY" so it isn't a landmine for any future code path that persists
+    // an ItineraryItem without going through saveItem().
     @Column(length = 3)
-    private String currency = "CNY";
+    private String currency = "USD";
 
     @Column(length = 20)
     private String status = "PENDING";
