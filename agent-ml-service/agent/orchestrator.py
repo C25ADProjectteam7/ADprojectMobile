@@ -18,6 +18,7 @@ import json
 import asyncio
 import functools
 import logging
+import re
 from datetime import date, datetime, timezone
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -47,6 +48,46 @@ ASSEMBLY_MAX_ATTEMPTS = 2
 # traffic), so a bare json.loads() with no retry turns an occasional
 # malformed response into a hard 500 for the whole extraction call.
 EXTRACTION_MAX_ATTEMPTS = 2
+
+
+def _parse_llm_json(raw: str):
+    """Parses LLM output into JSON, tolerating the common wrappers the model
+    adds even in json_object mode: markdown code fences (```json ... ```),
+    a leading prose sentence, or trailing text after the object. Extracts the
+    first balanced {...} block and parses that; raises ValueError if none."""
+    if raw is None:
+        raise ValueError("Empty LLM output")
+    text = raw.strip()
+    # Strip markdown code fences
+    fence = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
+    if fence:
+        text = fence.group(1).strip()
+    # Find the outermost braces of the first JSON object
+    start = text.find("{")
+    if start < 0:
+        raise ValueError(f"No JSON object in LLM output: {text[:120]!r}")
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return json.loads(text[start:i + 1])
+    raise ValueError(f"Unbalanced JSON in LLM output: {text[:120]!r}")
 
 MAX_TOOL_CALLS_PER_TURN = 5
 MAX_TOOL_CALLS_PER_TASK = 8
@@ -432,7 +473,7 @@ async def extract_trip_requirements(
     for attempt in range(1, EXTRACTION_MAX_ATTEMPTS + 1):
         raw = await chat_json(messages)
         try:
-            return json.loads(raw)
+            return _parse_llm_json(raw)
         except ValueError as exc:
             last_error = exc
             logger.warning(
@@ -700,7 +741,7 @@ async def _assemble_and_validate_itinerary(
     for attempt in range(1, ASSEMBLY_MAX_ATTEMPTS + 1):
         raw_itinerary = await chat_json(assembly_messages)
         try:
-            itinerary = json.loads(raw_itinerary)
+            itinerary = _parse_llm_json(raw_itinerary)
             _ensure_offer_ids(itinerary, gathered)
             return _validate_and_normalize_itinerary(
                 itinerary, gathered, expected_num_days, expected_start_date, existing_itinerary
