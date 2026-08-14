@@ -8,10 +8,16 @@ from dotenv import load_dotenv
 
 load_dotenv()  # load .env for local dev (git-ignored)
 
-# DeepSeek API (OpenAI-compatible endpoint)
+# LLM provider (OpenAI-compatible endpoint). Variable names kept as
+# DEEPSEEK_* for deployment compatibility (docker-compose / .env already
+# use them), but the values now point at Gemini's OpenAI-compatible layer.
+# To switch providers just change these three env vars - no code changes.
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+DEEPSEEK_BASE_URL = os.getenv(
+    "DEEPSEEK_BASE_URL",
+    "https://generativelanguage.googleapis.com/v1beta/openai/",
+)
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "gemini-3.7-flash")
 
 # Google Places API
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")

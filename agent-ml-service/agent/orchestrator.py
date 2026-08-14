@@ -544,117 +544,54 @@ def _trim_for_assembly(gathered: dict) -> dict:
 def _build_assembly_prompt(trip_requirements: dict, num_days: int, gathered_data: dict) -> str:
     """Phase 2 system prompt: assembles the final structured itinerary JSON
     from data already gathered in phase 1. No further tool calls happen here -
-    this call must only use the data provided, never invent new options."""
-    return f"""You are a business travel planning assistant. Using ONLY the real
-data provided below (do not invent flights, hotels, restaurants, or attractions
-that are not in this data), assemble a complete {num_days}-day itinerary.
+    this call must only use the data provided, never invent new options.
+    Kept deliberately terse: every extra sentence here is input tokens that
+    slow the LLM down without changing the output."""
+    return f"""You are a business travel planner. Using ONLY the data below
+(never invent flights/hotels/restaurants/attractions), assemble a {num_days}-day itinerary.
 
-Trip requirements:
-- Origin: {trip_requirements['originCity']}, Destination: {trip_requirements['destination']}
-- Dates: {trip_requirements['startDate']} to {trip_requirements['endDate']}
-- Total budget: {trip_requirements['budgetTotal']}
+Trip: {trip_requirements['originCity']} -> {trip_requirements['destination']},
+{trip_requirements['startDate']} to {trip_requirements['endDate']}, budget {trip_requirements['budgetTotal']}.
 
-Available real data (JSON):
+Data (JSON):
 {json.dumps(gathered_data, indent=2)}
 
-Return a JSON object with this exact structure:
+Return JSON with this exact structure:
 {{
-  "day1": {{
-    "date": "YYYY-MM-DD",
-    "flight": {{...}} or null,
-    "hotel": {{...}} or null,
-    "breakfast": {{...}} or null,
-    "attraction": {{...}} or null,
-    "lunch": {{...}} or null,
-    "dinner": {{...}} or null
-  }},
-  "day2": {{ ... }},
-  ...
+  "day1": {{"date": "YYYY-MM-DD", "flight": {{...}} or null, "hotel": {{...}} or null,
+           "breakfast": {{...}} or null, "attraction": {{...}} or null,
+           "lunch": {{...}} or null, "dinner": {{...}} or null}},
+  "day2": {{ ... }}, ...,
   "totalCost": <number>,
-  "warnings": ["..."]  // empty array if nothing to flag
+  "warnings": ["..."]
 }}
 
-Rules:
-- Include one "dayN" key for each of the {num_days} days, numbered sequentially.
-- Put the outbound flight on day1, the return flight on the last day ({num_days}).
-- Hotel applies to every day EXCEPT the departure day (the traveler checks out
-  that morning).
-- EVERY activity object (flight, hotel, breakfast, attraction, lunch, dinner)
-  MUST include a "startTime" field formatted as "HH:MM" (24-hour clock).
-  Hotel startTime is the standard check-in time (e.g. "14:00") EXCEPT on the
-  arrival day, where check-in MUST be at least 1.5 hours AFTER the outbound
-  flight's arrivalTime (a 19:40 arrival means check-in 21:30, never 14:00);
-  hotel must also include "endTime" as the check-out time (standard "12:00").
-  Derive meal/attraction startTime from the buffer logic below - never leave
-  it out, never output null.
-
-Meal/attraction scheduling MUST be computed from actual flight times using the
-buffer logic below - do not guess based on the departure/arrival time alone.
-
-DEPARTURE DAY (the last day, {num_days}) - work BACKWARDS from the return flight:
-1. Compute "must-leave-by time" = the return flight's departureTime MINUS 3 hours.
-   This accounts for travel to the airport plus check-in/security for an
-   international flight.
-2. Only schedule an activity or meal if it can reasonably conclude before the
-   must-leave-by time:
-   - Breakfast (assume it runs until ~09:00) - include only if
-     must-leave-by time is 09:00 or later.
-   - Lunch (assume it runs until ~14:00) - include only if
-     must-leave-by time is 14:00 or later.
-   - Dinner (assume it runs until ~20:00) - include only if
-     must-leave-by time is 20:00 or later (rare for a departure day).
-   - An attraction needs roughly 2 hours - include only if there is a clear
-     2+ hour gap before the must-leave-by time that isn't already used by a
-     scheduled meal.
-3. If NONE of the above fit, leave breakfast/lunch/dinner/attraction all null
-   for the departure day - do not force something in that doesn't fit.
-4. If multiple return flight options were provided, prefer one that departs
-   later in the day (more usable time before leaving), but do not pick one
-   that costs meaningfully more or adds a connection just to gain an hour or
-   two - balance usable time against price/convenience.
-
-ARRIVAL DAY (day1) - work FORWARDS from the outbound flight:
-1. Compute "usable-from time" = the outbound flight's arrivalTime PLUS 1.5 hours.
-   This accounts for deplaning, immigration/customs, baggage claim, and
-   transport from the airport into the city.
-2. Never schedule breakfast on day1 (the traveler was in transit that morning).
-3. Include lunch only if usable-from time is 13:30 or earlier (i.e. there's
-   still time before a typical lunch window closes).
-4. Always include dinner on day1 (evening is available regardless of a
-   reasonable arrival time), unless usable-from time is after 20:00.
-5. Include one attraction only if there's a clear 2+ hour gap between
-   usable-from time and the next scheduled meal.
-
-MIDDLE DAYS (any day that is neither day1 nor the last day): schedule
-breakfast, lunch, dinner, and one attraction normally - no buffer math needed.
-
-Other rules:
-- Pick specific restaurants/attractions from the provided data for meals and
-  sightseeing - do not repeat the exact same restaurant for every meal if
-  multiple options were provided.
-- Use judgment about meal appropriateness: heavy dinner-style cuisine (e.g.
-  seafood boils, hotpot, fine dining) is usually NOT suitable for breakfast.
-  If none of the provided restaurant options seem appropriate for breakfast,
-  set "breakfast" to null rather than forcing an ill-fitting choice - it's
-  better to leave breakfast unplanned than to suggest something unrealistic.
-- CRITICAL: when including a flight or hotel object in the itinerary, you
-  MUST preserve ALL fields from the source data exactly as given, especially
-  "offerId" - this field is required for booking and must never be dropped,
-  renamed, or omitted, even though it looks like an internal/technical field.
-- If a category (e.g. attractions) has no data available, set that field to
-  null rather than inventing something.
-- search_hotels/search_restaurants/search_attractions results may include a
-  "budgetRelaxed" or "preferenceRelaxed" flag with a "note" explaining a
-  fallback was used. If any such flag is true, add a top-level "warnings"
-  array to your output listing each note in plain English, so the traveler
-  understands why a result doesn't perfectly match their original ask.
-- If search_flights returned an empty list for either leg, set "totalCost" as
-  best as possible from what IS available and add a warning noting that no
-  flights were found for that route/date - do not invent a flight.
-- totalCost must be the sum of the flight price(s) + hotel price (per night x
-  nights) - restaurant/attraction costs are informational only and excluded
-  from totalCost since pricing for those wasn't reliably available.
-- Return ONLY the JSON object, no other text.
+Scheduling rules:
+- One "dayN" per day. Outbound flight on day1, return flight on the last day.
+- Hotel on every day except the departure day (check-out that morning).
+- Every activity object MUST have "startTime" as "HH:MM". Hotel: check-in
+  14:00 (arrival day: >=1.5h AFTER flight arrival, e.g. 19:40 arrival -> 21:30),
+  check-out "endTime" 12:00. Never output null startTime.
+- Meals/attractions use flight-time buffers:
+  * Last day: must-leave-by = return departure - 3h. Breakfast only if
+    >=09:00, lunch if >=14:00, dinner if >=20:00, attraction needs a free 2h
+    gap. If nothing fits, all null. Prefer a later return flight unless it's
+    meaningfully pricier or adds a connection.
+  * Day 1: usable-from = arrival + 1.5h. No breakfast. Lunch only if
+    usable-from <= 13:30. Dinner always unless usable-from > 20:00. One
+    attraction only with a free 2h gap.
+  * Middle days: breakfast, lunch, dinner, one attraction - no buffer math.
+- Vary restaurants across meals when options exist. Heavy dinner cuisine
+  (seafood boil, hotpot, fine dining) is NOT breakfast - leave breakfast null
+  over forcing a bad fit.
+- Preserve flight/hotel source fields VERBATIM, especially "offerId" (required
+  for booking - never drop/rename/omit it).
+- No data for a category -> null. Relaxation flags ("budgetRelaxed"/
+  "preferenceRelaxed") -> list their notes in "warnings". Empty flight search
+  -> best-effort totalCost + warning, never invent a flight.
+- totalCost = flight(s) + hotel(per-night x nights). Restaurants/attractions
+  are informational, excluded from totalCost.
+- Return ONLY the JSON object.
 """
 
 
