@@ -1,0 +1,39 @@
+# ============================================================
+# Docker build context = ./agent-ml-service  (see docker-compose.yml)
+# Patterns below are relative to THAT directory, not the repo root.
+#
+# Purpose: keep local research data and caches out of the image.
+# Without this file `COPY . .` shipped ~558 MB of raw training data.
+#
+# Deliberately NOT ignored (the runtime needs them):
+#   models/          production artifacts, incl. hotel_price_india_hybrid_v1.*
+#   ml/ agent/       production code
+#   tests/           run in the image to verify the pinned environment
+# ============================================================
+
+# Local virtualenv - never belongs in an image
+.venv
+venv
+
+# Raw/derived training data: gitignored research inputs, not runtime inputs.
+# The models/ directory is what production loads.
+training/data/
+
+# CatBoost training scratch output
+catboost_info/
+
+# Python + tooling caches
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# VCS (normally outside this context, listed for safety)
+.git
+.gitignore
+
+# Local env / OS noise
+.env
+.env.*
+.DS_Store
