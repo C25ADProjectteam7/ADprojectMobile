@@ -14,6 +14,14 @@ client = AsyncOpenAI(
     timeout=config.AGENT_TIMEOUT_SECONDS,
 )
 
+# DeepSeek v4 thinking mode is ON by default (effort=high): every call first
+# emits a reasoning chain before the actual answer, which (a) roughly doubles
+# latency, (b) requires echoing reasoning_content back on tool-call turns or
+# the API returns 400, and (c) ignores temperature. Our agent doesn't need the
+# reasoning chain - plain fast JSON/tool-call turns are what make itineraries
+# snappy - so thinking is explicitly DISABLED on every call below.
+_THINKING_OFF = {"thinking": {"type": "disabled"}}
+
 # The OpenAI SDK wraps httpx internally and raises its own
 # openai.APITimeoutError on timeout, not httpx.TimeoutException - so
 # retry_on_timeout needs to be told that explicitly (its default only matches
@@ -54,6 +62,7 @@ async def chat_completion(messages: list[dict], temperature: float = 0.3) -> str
         model=config.DEEPSEEK_MODEL,
         messages=messages,
         temperature=temperature,
+        extra_body=_THINKING_OFF,
     )
     return response.choices[0].message.content
 
@@ -61,15 +70,13 @@ async def chat_completion(messages: list[dict], temperature: float = 0.3) -> str
 @retry_on_server_errors()
 @_RETRY_ON_TIMEOUT
 async def chat_json(messages: list[dict], temperature: float = 0.2) -> str:
-    """Forced JSON output: for structured-result scenarios (extraction, itinerary generation).
-    NOTE: no max_tokens cap - DeepSeek v4 reasoning models count thinking
-    tokens against the cap; a too-small cap returns an EMPTY content string
-    which json.loads then fails on with 'Expecting value: line 1 column 1'."""
+    """Forced JSON output: for structured-result scenarios (extraction, itinerary generation)."""
     response = await client.chat.completions.create(
         model=config.DEEPSEEK_MODEL,
         messages=messages,
         temperature=temperature,
         response_format={"type": "json_object"},
+        extra_body=_THINKING_OFF,
     )
     return response.choices[0].message.content
 
@@ -84,6 +91,7 @@ async def chat_with_tools(messages: list[dict], tools: list[dict], temperature: 
         messages=messages,
         tools=tools,
         temperature=temperature,
+        extra_body=_THINKING_OFF,
     )
     return response.choices[0].message
 
