@@ -17,7 +17,7 @@ DEEPSEEK_BASE_URL = os.getenv(
     "DEEPSEEK_BASE_URL",
     "https://generativelanguage.googleapis.com/v1beta/openai/",
 )
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "gemini-3.7-flash")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "gemini-flash-latest")
 
 # Google Places API
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
