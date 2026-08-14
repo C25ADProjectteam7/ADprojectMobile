@@ -61,12 +61,16 @@ async def chat_completion(messages: list[dict], temperature: float = 0.3) -> str
 @retry_on_server_errors()
 @_RETRY_ON_TIMEOUT
 async def chat_json(messages: list[dict], temperature: float = 0.2) -> str:
-    """Forced JSON output: for structured-result scenarios (extraction, itinerary generation)"""
+    """Forced JSON output: for structured-result scenarios (extraction, itinerary generation).
+    max_tokens caps the output so a runaway itinerary JSON can't drag the
+    response time - 4096 is generous for a 7-day itinerary but prevents the
+    model from rambling."""
     response = await client.chat.completions.create(
         model=config.DEEPSEEK_MODEL,
         messages=messages,
         temperature=temperature,
         response_format={"type": "json_object"},
+        max_tokens=4096,
     )
     return response.choices[0].message.content
 

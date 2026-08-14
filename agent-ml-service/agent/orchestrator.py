@@ -816,7 +816,12 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
     gathered = {"search_flights": [], "search_hotels": [], "search_restaurants": [], "search_attractions": []}
     tool_call_counts: dict[str, int] = {}
 
-    for _ in range(4):  # gathering flights+hotel+restaurants+attractions needs more turns than a narrower search
+    # Speed: the gather prompt instructs the LLM to fire ALL 5 searches
+    # concurrently in its first response (MAX_TOOL_CALLS_PER_TURN == 5), so
+    # the ideal case is 1 tool turn + 1 plain-text confirmation. 2 turns is
+    # enough headroom for the LLM splitting calls across turns; 4 just paid
+    # for extra LLM round-trips that never produced new data.
+    for _ in range(2):
         message = await chat_with_tools(messages, schemas)
 
         if not message.tool_calls:
