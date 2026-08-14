@@ -186,6 +186,14 @@ public class TripService {
     @Transactional
     @SuppressWarnings("unchecked")
     public Map<String, Object> agentChat(Long tripId, String message) {
+        return agentChat(tripId, message, null);
+    }
+
+    /** Same as agentChat(2-arg), with a stage listener for app-visible progress. */
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> agentChat(Long tripId, String message,
+                                         java.util.function.Consumer<String> stageListener) {
         Trip trip = findOwnedTrip(tripId);  // auth check
         User user = currentUser.get();
 
@@ -193,6 +201,7 @@ public class TripService {
         saveConversationTurn(user, trip, AgentConversation.Role.USER, message);
 
         // Step 1: extract structured trip requirements from free text
+        if (stageListener != null) stageListener.accept("understanding_request");
         Map<String, Object> extracted = agentOrchestrator.extractRequirements(
                 message, context.recentHistory(), context.summary());
 
@@ -217,7 +226,7 @@ public class TripService {
         Object prefs = extracted.get("preferences");
         tripData.put("preferences", prefs != null ? prefs : List.of());
 
-        Map<String, Object> itinerary = agentOrchestrator.generateItinerary(tripData);
+        Map<String, Object> itinerary = agentOrchestrator.generateItinerary(tripData, stageListener);
 
         // Step 3: persist extracted info + generated itinerary
         if (extracted.get("originCity") != null) trip.setOriginCity((String) extracted.get("originCity"));
@@ -368,6 +377,12 @@ public class TripService {
     @Transactional
     @SuppressWarnings("unchecked")
     public Map<String, Object> modifyItinerary(Long tripId, String userRequest) {
+        return modifyItinerary(tripId, userRequest, null);
+    }
+
+    /** Same as modifyItinerary(2-arg), with a stage listener for app-visible progress. */
+    public Map<String, Object> modifyItinerary(Long tripId, String userRequest,
+                                               java.util.function.Consumer<String> stageListener) {
         Trip trip = findOwnedTrip(tripId);
         User user = currentUser.get();
 
@@ -380,7 +395,7 @@ public class TripService {
 
         saveConversationTurn(user, trip, AgentConversation.Role.USER, userRequest);
 
-        Map<String, Object> updatedItinerary = agentOrchestrator.modifyItinerary(currentItinerary, userRequest);
+        Map<String, Object> updatedItinerary = agentOrchestrator.modifyItinerary(currentItinerary, userRequest, stageListener);
 
         // orchestrator.py's _validate_and_normalize_itinerary now requires
         // changeApplied to be a real boolean whenever existing_itinerary is

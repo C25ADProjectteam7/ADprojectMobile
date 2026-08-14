@@ -26,6 +26,7 @@ from agent.deepseek_client import chat_completion, chat_json, chat_with_tools
 from agent import tools as agent_tools
 from agent.duffel_client import resolve_city_to_iata, resolve_city_to_country_code
 from agent.exchange_rate_client import get_usd_to_sgd_rate
+from agent.task_manager import set_task_stage
 
 logger = logging.getLogger(__name__)
 
@@ -721,6 +722,7 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
     for development/debugging); defaults to False to keep the production
     response payload lean."""
     origin_city_name = trip_requirements['originCity']
+    set_task_stage("resolving_locations")
     origin_code = await resolve_city_to_iata(origin_city_name)
     dest_code = await resolve_city_to_iata(trip_requirements['destination'])
     guest_nationality = await resolve_city_to_country_code(origin_city_name) or "SG"
@@ -745,6 +747,7 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
     )
 
     # ---- Phase 1: gather raw data via tool calls ----
+    set_task_stage("searching_flights_hotels")
     messages = [
         {"role": "system", "content": _build_gather_prompt(resolved_requirements, num_days)},
         {"role": "user", "content": "Please gather all the data needed for this trip."},
@@ -776,6 +779,7 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
             })
 
     # ---- Phase 2: assemble the structured itinerary from gathered data ----
+    set_task_stage("assembling_itinerary")
     trimmed_data = _trim_for_assembly(gathered)
     assembly_messages = [
         {"role": "system", "content": _build_assembly_prompt(resolved_requirements, num_days, trimmed_data)},

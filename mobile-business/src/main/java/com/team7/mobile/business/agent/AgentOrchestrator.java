@@ -113,8 +113,11 @@ public class AgentOrchestrator {
     /**
      * Backlog #6: Generate complete itinerary from structured trip data.
      * Async: submits the request, polls until the background task completes.
+     * stageListener (optional): called with the Python task's stage on every
+     * poll so the app can show real progress instead of a generic spinner.
      */
-    public Map<String, Object> generateItinerary(Map<String, Object> tripData) {
+    public Map<String, Object> generateItinerary(Map<String, Object> tripData,
+                                                 java.util.function.Consumer<String> stageListener) {
         String url = agentBaseUrl + "/api/agent/generate-itinerary";
         Map<String, Object> submitResponse = call(url, tripData);
         String taskId = (String) submitResponse.get("taskId");
@@ -122,14 +125,20 @@ public class AgentOrchestrator {
             throw new ExternalApiException("AgentService",
                     "generate-itinerary did not return a taskId: " + submitResponse, null);
         }
-        return pollTask(taskId);
+        return pollTask(taskId, stageListener);
+    }
+
+    /** No-stage-listener overload — keeps existing callers working unchanged. */
+    public Map<String, Object> generateItinerary(Map<String, Object> tripData) {
+        return generateItinerary(tripData, null);
     }
 
     /**
      * Backlog #10: Modify an existing itinerary via conversational input.
      * Async: submits the request, polls until the background task completes.
      */
-    public Map<String, Object> modifyItinerary(Map<String, Object> currentItinerary, String userRequest) {
+    public Map<String, Object> modifyItinerary(Map<String, Object> currentItinerary, String userRequest,
+                                               java.util.function.Consumer<String> stageListener) {
         String url = agentBaseUrl + "/api/agent/modify-itinerary";
         Map<String, Object> body = Map.of(
                 "currentItinerary", (Object) currentItinerary,
@@ -140,7 +149,12 @@ public class AgentOrchestrator {
             throw new ExternalApiException("AgentService",
                     "modify-itinerary did not return a taskId: " + submitResponse, null);
         }
-        return pollTask(taskId);
+        return pollTask(taskId, stageListener);
+    }
+
+    /** No-stage-listener overload — keeps existing callers working unchanged. */
+    public Map<String, Object> modifyItinerary(Map<String, Object> currentItinerary, String userRequest) {
+        return modifyItinerary(currentItinerary, userRequest, null);
     }
 
     /**
@@ -156,7 +170,7 @@ public class AgentOrchestrator {
             throw new ExternalApiException("AgentService",
                     "book-trip did not return a taskId: " + submitResponse, null);
         }
-        return pollTask(taskId);
+        return pollTask(taskId, null);
     }
 
     /**
@@ -167,7 +181,7 @@ public class AgentOrchestrator {
      * "createdAt": "...", "finishedAt": "..." | null}
      */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> pollTask(String taskId) {
+    private Map<String, Object> pollTask(String taskId, java.util.function.Consumer<String> stageListener) {
         String url = agentBaseUrl + "/api/agent/tasks/" + taskId;
         int consecutiveFailures = 0;
 
@@ -200,6 +214,12 @@ public class AgentOrchestrator {
             }
 
             String status = (String) taskState.get("status");
+            // Push the Python task's current stage to the caller (e.g. the
+            // app-visible task map in AgentChatService) so progress is real:
+            // "searching_flights_hotels" beats a generic spinner.
+            if (stageListener != null && taskState.get("stage") != null) {
+                stageListener.accept((String) taskState.get("stage"));
+            }
             if ("completed".equals(status)) {
                 return (Map<String, Object>) taskState.get("result");
             }

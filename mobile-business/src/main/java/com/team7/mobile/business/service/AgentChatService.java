@@ -113,12 +113,25 @@ public class AgentChatService {
 
     @Async
     public void executeAsync(String taskId, Long tripId, String message) {
-        runTaskAsync(taskId, tripId, () -> tripService.agentChat(tripId, message));
+        runTaskAsync(taskId, tripId,
+                () -> tripService.agentChat(tripId, message, stage -> updateStage(taskId, stage)));
     }
 
     @Async
     public void executeModifyAsync(String taskId, Long tripId, String userRequest) {
-        runTaskAsync(taskId, tripId, () -> tripService.modifyItinerary(tripId, userRequest));
+        runTaskAsync(taskId, tripId,
+                () -> tripService.modifyItinerary(tripId, userRequest, stage -> updateStage(taskId, stage)));
+    }
+
+    /** Updates the task's stage field so GET /api/agent/tasks/{taskId} shows
+     * real progress (e.g. "searching_flights_hotels") to the polling app. */
+    private void updateStage(String taskId, String stage) {
+        Map<String, Object> existing = tasks.get(taskId);
+        if (existing != null) {
+            Map<String, Object> updated = new HashMap<>(existing);
+            updated.put("stage", stage);
+            tasks.put(taskId, updated);
+        }
     }
 
     private void runTaskAsync(String taskId, Long tripId, java.util.function.Supplier<Map<String, Object>> work) {

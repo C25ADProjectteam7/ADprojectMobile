@@ -17,12 +17,21 @@ doesn't grow unbounded.
 import logging
 import uuid
 import asyncio
+import contextvars
 from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
 _tasks: dict[str, dict] = {}
 _background_tasks: set = set()
+
+# Current task_id for the running background coroutine. Orchestrator code
+# calls set_task_stage() without knowing its task_id; run_in_background sets
+# this context var inside the wrapper so the coroutine (and anything it
+# awaits) can update its own task's stage transparently.
+_current_task_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "current_task_id", default=None
+)
 
 # Shown to the API caller when a background task fails. Deliberately generic -
 # the real exception (which may embed request URLs, library internals, or
@@ -41,12 +50,22 @@ def create_task() -> str:
     task_id = str(uuid.uuid4())
     _tasks[task_id] = {
         "status": "processing",
+        "stage": "starting",
         "result": None,
         "error": None,
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "finishedAt": None,
     }
     return task_id
+
+
+def set_task_stage(stage: str) -> None:
+    """Updates the current background task's stage (read by pollers so the
+    app can show progress like 'searching flights...' instead of a generic
+    spinner). No-op when called outside a background task."""
+    task_id = _current_task_id.get()
+    if task_id and task_id in _tasks:
+        _tasks[task_id]["stage"] = stage
 
 
 def get_task(task_id: str) -> dict | None:
@@ -107,6 +126,7 @@ def run_in_background(task_id: str, coro) -> None:
     the created asyncio.Task to prevent it being garbage-collected before
     completion - a documented asyncio pitfall, not optional defensive code."""
     async def _wrapper():
+        _current_task_id.set(task_id)
         try:
             result = await coro
             _complete_task(task_id, result)
