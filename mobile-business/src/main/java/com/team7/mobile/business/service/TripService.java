@@ -389,7 +389,13 @@ public class TripService {
         return modifyItinerary(tripId, userRequest, null);
     }
 
-    /** Same as modifyItinerary(2-arg), with a stage listener for app-visible progress. */
+    /** Same as modifyItinerary(2-arg), with a stage listener for app-visible progress.
+     * Needs its own @Transactional: AgentChatService calls THIS overload through
+     * the Spring proxy, so the annotation on the 2-arg sibling never applies -
+     * without it, saveItinerary's deleteByItineraryId throws "No EntityManager
+     * with actual transaction available" (observed live on the first real
+     * agent-modify call from the app). */
+    @Transactional
     public Map<String, Object> modifyItinerary(Long tripId, String userRequest,
                                                java.util.function.Consumer<String> stageListener) {
         Trip trip = findOwnedTrip(tripId);
