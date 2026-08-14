@@ -62,15 +62,14 @@ async def chat_completion(messages: list[dict], temperature: float = 0.3) -> str
 @_RETRY_ON_TIMEOUT
 async def chat_json(messages: list[dict], temperature: float = 0.2) -> str:
     """Forced JSON output: for structured-result scenarios (extraction, itinerary generation).
-    max_tokens caps the output so a runaway itinerary JSON can't drag the
-    response time - 4096 is generous for a 7-day itinerary but prevents the
-    model from rambling."""
+    NOTE: no max_tokens cap - DeepSeek v4 reasoning models count thinking
+    tokens against the cap; a too-small cap returns an EMPTY content string
+    which json.loads then fails on with 'Expecting value: line 1 column 1'."""
     response = await client.chat.completions.create(
         model=config.DEEPSEEK_MODEL,
         messages=messages,
         temperature=temperature,
         response_format={"type": "json_object"},
-        max_tokens=4096,
     )
     return response.choices[0].message.content
 
