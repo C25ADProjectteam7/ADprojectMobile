@@ -34,6 +34,13 @@ class IndiaHotelPriceRequest(BaseModel):
         return s
 
 
+class IndiaHotelPriceByHotelIdRequest(BaseModel):
+    hotelId: str = Field(..., min_length=1)
+    hotelName: str = Field(..., min_length=1)
+    bookingDate: date
+    checkInDate: date
+
+
 class IndiaHotelPriceResponse(BaseModel):
     predictionAvailable: Literal[True] = True
     predictionSource: Literal["ML", "HISTORICAL"]

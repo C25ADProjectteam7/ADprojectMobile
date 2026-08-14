@@ -3,9 +3,14 @@
 from fastapi import APIRouter
 from ml.schemas import HotelPriceRequest, HotelPriceResponse
 from ml.price_predictor import HotelPricePredictor
-from ml.india_schemas import (IndiaHotelPriceRequest, IndiaHotelPriceResponse,
-                              IndiaHotelPriceUnavailable)
+from ml.india_schemas import (
+    IndiaHotelPriceRequest,
+    IndiaHotelPriceByHotelIdRequest,
+    IndiaHotelPriceResponse,
+    IndiaHotelPriceUnavailable,
+)
 from ml.india_hotel_price_predictor import IndiaHotelPricePredictor
+from ml.india_liteapi_probe import get_fair_price_probe
 
 router = APIRouter(prefix="/api/ml", tags=["Machine Learning"])
 
@@ -49,6 +54,50 @@ def predict_india_hotel_price(request: IndiaHotelPriceRequest):
         booking_date=request.bookingDate, check_in_date=request.checkInDate,
         room_name=request.roomName, board_type=request.boardType,
         board_name=request.boardName, refundable_tag=request.refundableTag,
+    )
+
+@router.post(
+    "/v2/hotel-price/by-hotel-id",
+    response_model=IndiaHotelPriceResponse | IndiaHotelPriceUnavailable,
+    tags=["Machine Learning"],
+)
+async def predict_india_hotel_price_by_hotel_id(
+    request: IndiaHotelPriceByHotelIdRequest,
+):
+    # 1. Ask LiteAPI for a comparable quote:
+    #    same hotel, 1 night, 1 room, 2 adults, INR.
+    probe = await get_fair_price_probe(
+        hotel_id=request.hotelId,
+        hotel_name=request.hotelName,
+        check_in=request.checkInDate.isoformat(),
+    )
+
+    # 2. No valid comparable LiteAPI rate.
+    if not probe.get("available"):
+        return {
+            "predictionAvailable": False,
+            "reason": probe.get("reason", "NO_COMPARABLE_RATE"),
+        }
+
+    # 3. Country must come from LiteAPI, not from Android/Spring.
+    country = (probe.get("country") or "").strip()
+    if country.casefold() in {"india", "in", "ind"}:
+        market = "IN"
+    else:
+        market = country
+
+    # 4. Feed the real LiteAPI quote/context into the existing predictor.
+    return _india_predictor.predict(
+        hotel_name=probe["hotelName"],
+        current_price=probe["comparableOneNightPrice"],
+        currency=probe.get("currency") or "INR",
+        market=market,
+        booking_date=request.bookingDate,
+        check_in_date=request.checkInDate,
+        room_name=probe.get("roomName"),
+        board_type=probe.get("boardType"),
+        board_name=probe.get("boardName"),
+        refundable_tag=probe.get("refundableTag"),
     )
 
 
