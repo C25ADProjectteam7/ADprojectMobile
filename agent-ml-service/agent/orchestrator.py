@@ -27,6 +27,7 @@ from agent.deepseek_client import chat_completion, chat_json, chat_with_tools
 from agent import tools as agent_tools
 from agent.duffel_client import resolve_city_to_iata, resolve_city_to_country_code
 from agent.exchange_rate_client import get_usd_to_sgd_rate
+from agent.http_utils import SearchApiError
 from agent.task_manager import set_task_stage
 
 logger = logging.getLogger(__name__)
@@ -333,6 +334,13 @@ async def _execute_tool_calls(
 
         try:
             return call, func_name, validated_args, await func(**validated_args)
+        except SearchApiError as exc:
+            # Message is written by our own client code from the provider's
+            # error body - safe and useful for the LLM to reason about (e.g.
+            # "departure_date cannot be in the past").
+            return call, func_name, validated_args, {
+                "error": {"code": "tool_execution_failed", "message": str(exc)}
+            }
         except Exception:
             return call, func_name, validated_args, {
                 "error": {"code": "tool_execution_failed", "message": "The tool request failed. Try another valid query."}
@@ -779,6 +787,27 @@ async def generate_itinerary(trip_requirements: dict, debug: bool = False) -> di
     start = date.fromisoformat(trip_requirements['startDate'])
     end = date.fromisoformat(trip_requirements['endDate'])
     num_days = (end - start).days + 1
+
+    # Duffel (and LiteAPI) only return offers for dates today-or-later; a past
+    # departure_date gets HTTP 422 from the search itself, which the LLM then
+    # turns into "no flights found" and the trip ends up silently empty. Fail
+    # fast here instead with a message the traveler can actually act on.
+    today = datetime.now(timezone.utc).date()
+    if start < today:
+        return {
+            "error": (
+                f"The trip start date {start} is in the past. Flight and hotel "
+                f"searches only cover dates from today ({today}) onwards - please "
+                f"update the trip dates and try again."
+            ),
+        }
+    if end < start:
+        return {
+            "error": (
+                f"The trip end date {end} is before the start date {start}. "
+                f"Please check the dates and try again."
+            ),
+        }
 
     resolved_requirements = {**trip_requirements, "originCity": origin_code, "destination": dest_code}
 
