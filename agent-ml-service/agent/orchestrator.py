@@ -19,7 +19,7 @@ import asyncio
 import functools
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 import config
@@ -300,7 +300,188 @@ def _validate_and_normalize_itinerary(
     elif "changeApplied" in itinerary and not isinstance(itinerary["changeApplied"], bool):
         raise ValueError("Agent itinerary changeApplied must be a boolean")
 
+    _enforce_scheduling_rules(itinerary)
     return itinerary
+
+
+def _enforce_scheduling_rules(itinerary: dict) -> None:
+    """Deterministic post-checks so an unusable schedule can't reach the app
+    even when the LLM misapplied the prompt's rules (observed live: hotel
+    check-in and dinner on the outbound day while the traveler was still
+    airborne; the same restaurant scheduled 3 times). Dropped/fixed items are
+    annotated in warnings - never silently changed."""
+    day_keys = sorted(
+        (k for k in itinerary if k.startswith("day") and isinstance(itinerary[k], dict)),
+        key=lambda k: int(k[3:]),
+    )
+    if not day_keys:
+        return
+    days = {k: itinerary[k] for k in day_keys}
+
+    def parse_datetime(value):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    def activity_time(day: dict, item: dict):
+        """Best-effort start time of a non-flight item on its day's date."""
+        raw = item.get("startTime") or item.get("checkIn")
+        if not raw:
+            return None
+        try:
+            hhmm = datetime.strptime(str(raw), "%H:%M").time()
+            return datetime.combine(date.fromisoformat(day["date"]), hhmm)
+        except ValueError:
+            return None
+
+    warnings = itinerary.setdefault("warnings", [])
+    outbound = days["day1"].get("flight")
+    return_flight = days[day_keys[-1]].get("flight")
+
+    # 1) Outbound day: nothing while airborne. Overnight flight -> the
+    #    departure day holds ONLY the flight. Same-day flight -> nothing in
+    #    the [departure, arrival + 1.5h] window; items after arrival + 1.5h
+    #    are legitimately usable and stay.
+    if isinstance(outbound, dict):
+        dep = parse_datetime(outbound.get("departureTime"))
+        arr = parse_datetime(outbound.get("arrivalTime"))
+        overnight = bool(dep and arr and arr.date() > dep.date())
+        for field in ("hotel", "breakfast", "attraction", "lunch", "dinner"):
+            item = days["day1"].get(field)
+            if not isinstance(item, dict):
+                continue
+            if overnight:
+                days["day1"][field] = None
+                warnings.append(
+                    f"Removed {field} from day 1 - the outbound flight is overnight "
+                    f"(lands the next day), so the departure day holds only the flight."
+                )
+            elif dep is not None:
+                start = activity_time(days["day1"], item)
+                usable_from = (arr + timedelta(minutes=90)) if arr is not None else None
+                if start is not None and start >= dep and (usable_from is None or start < usable_from):
+                    days["day1"][field] = None
+                    warnings.append(
+                        f"Removed {field} from day 1 - it falls while the outbound "
+                        f"flight is airborne."
+                    )
+
+    # 2) Hotel: one stay covering EVERY night, including the arrival night.
+    #    The LLM writes times as checkIn/checkOut while the app reads
+    #    startTime/endTime - normalize the keys here so the app actually
+    #    shows them. Fill the arrival-day check-in (>= arrival + 1.5h),
+    #    strip times on middle days, and on the return day set check-out
+    #    12:00 - or drop the entry when the return flight leaves before noon.
+    arrival_key = None
+    if isinstance(outbound, dict):
+        arr = parse_datetime(outbound.get("arrivalTime"))
+        if arr is not None:
+            day1_date = date.fromisoformat(days["day1"]["date"])
+            arrival_key = f"day{(arr.date() - day1_date).days + 1}"
+
+    if arrival_key is not None:
+        arrival_hotel = days.get(arrival_key, {}).get("hotel")
+        if not isinstance(arrival_hotel, dict):
+            # The LLM skipped the arrival night (observed live: a 19:52
+            # landing produced a hotel only on days 2-3) - carry the stay's
+            # hotel from a later day back onto the arrival day.
+            for key in day_keys:
+                candidate = days.get(key, {}).get("hotel")
+                if isinstance(candidate, dict) and key != arrival_key:
+                    arrival_hotel = dict(candidate)
+                    days[arrival_key]["hotel"] = arrival_hotel
+                    warnings.append(
+                        f"Restored the hotel on {arrival_key} - the arrival night "
+                        f"must be covered as part of the stay."
+                    )
+                    break
+        if isinstance(arrival_hotel, dict) and isinstance(outbound, dict):
+            arr = parse_datetime(outbound.get("arrivalTime"))
+            earliest = arr + timedelta(minutes=90) if arr is not None else None
+            checkin = activity_time(days[arrival_key], arrival_hotel)
+            raw_checkin = arrival_hotel.get("startTime") or arrival_hotel.get("checkIn")
+            if earliest is not None and (checkin is None or checkin < earliest):
+                arrival_hotel["startTime"] = earliest.strftime("%H:%M")
+                warnings.append(
+                    f"Set hotel check-in on {arrival_key} to {earliest.strftime('%H:%M')} - "
+                    f"the original time was "
+                    f"{'missing' if checkin is None else 'before the flight landed'}."
+                )
+            elif raw_checkin is not None:
+                # Key normalization only - the LLM used checkIn.
+                arrival_hotel["startTime"] = str(raw_checkin)
+            arrival_hotel.pop("checkIn", None)
+            arrival_hotel.pop("checkOut", None)
+            arrival_hotel.pop("endTime", None)
+
+    last_key = day_keys[-1]
+    for key in day_keys:
+        if key == arrival_key or key == last_key:
+            continue
+        hotel = days[key].get("hotel")
+        if isinstance(hotel, dict):
+            hotel.pop("startTime", None)
+            hotel.pop("checkIn", None)
+            hotel.pop("endTime", None)
+            hotel.pop("checkOut", None)
+
+    if isinstance(return_flight, dict):
+        return_dep = parse_datetime(return_flight.get("departureTime"))
+        last_hotel = days[last_key].get("hotel")
+        if isinstance(last_hotel, dict):
+            if return_dep is not None and return_dep.hour < 12:
+                days[last_key]["hotel"] = None
+                warnings.append(
+                    f"Removed hotel from the last day - the return flight departs at "
+                    f"{return_dep.strftime('%H:%M')}, before the usual 12:00 check-out."
+                )
+            else:
+                checkout = last_hotel.get("endTime") or last_hotel.get("checkOut")
+                last_hotel["endTime"] = str(checkout) if checkout else "12:00"
+                last_hotel.pop("startTime", None)
+                last_hotel.pop("checkIn", None)
+                last_hotel.pop("checkOut", None)
+
+    # 3) Last day: nothing at/after the return flight departs.
+    if isinstance(return_flight, dict):
+        dep = parse_datetime(return_flight.get("departureTime"))
+        if dep is not None:
+            last_day = days[day_keys[-1]]
+            for field in ("hotel", "breakfast", "attraction", "lunch", "dinner"):
+                item = last_day.get(field)
+                if not isinstance(item, dict):
+                    continue
+                start = activity_time(last_day, item)
+                if start is not None and start >= dep:
+                    last_day[field] = None
+                    warnings.append(
+                        f"Removed {field} from the last day - it starts after the "
+                        f"return flight departs."
+                    )
+
+    # 4) Each restaurant/attraction at most once per trip (hotels legitimately
+    #    repeat - it's one stay).
+    seen: dict[str, set] = {"breakfast": set(), "lunch": set(), "dinner": set(), "attraction": set()}
+    for key in day_keys:
+        day = days[key]
+        for field in ("breakfast", "lunch", "dinner", "attraction"):
+            item = day.get(field)
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            if name in seen[field]:
+                day[field] = None
+                warnings.append(
+                    f"Removed duplicate {field} '{name}' on {key} - each restaurant/"
+                    f"attraction appears at most once per trip."
+                )
+            else:
+                seen[field].add(name)
 
 async def _execute_tool_calls(
         tool_calls,
@@ -618,19 +799,32 @@ Return JSON with this exact structure:
 
 Scheduling rules:
 - One "dayN" per day. Outbound flight on day1, return flight on the last day.
-- Hotel on every day except the departure day (check-out that morning).
-- Every activity object MUST have "startTime" as "HH:MM". Hotel: check-in
-  14:00 (arrival day: >=1.5h AFTER flight arrival, e.g. 19:40 arrival -> 21:30),
-  check-out "endTime" 12:00. Never output null startTime.
+- Departure day (day1): if the outbound flight lands on a LATER day (overnight),
+  day1 contains ONLY the flight - no hotel, no meals, no attractions. If it
+  lands the same day: usable-from = arrival + 1.5h, no breakfast, lunch only
+  if usable-from <= 13:30, dinner unless usable-from > 20:00, one attraction
+  with a free 2h gap. NEVER schedule anything in the airborne window
+  [departure, arrival + 1.5h] - the traveler is on the plane.
+- Hotel: the SAME hotel covers EVERY night of the stay, INCLUDING the arrival
+  night - even when the flight lands late in the evening, the hotel must still
+  appear on the arrival day with check-in >=1.5h AFTER landing (e.g. 19:40
+  arrival -> 21:30). Then on every following day without check-in/check-out
+  times, and on the return day with check-out "endTime" 12:00. NEVER put the
+  hotel on the outbound day, and never give it a check-in before the flight
+  lands. Prefer centrally located hotels over airport hotels when both fit
+  the budget.
+- Every activity object MUST have "startTime" as "HH:MM". Never output null
+  startTime.
 - Meals/attractions use flight-time buffers:
-  * Last day: must-leave-by = return departure - 3h. Breakfast only if
-    >=09:00, lunch if >=14:00, dinner if >=20:00, attraction needs a free 2h
-    gap. If nothing fits, all null. Prefer a later return flight unless it's
+  * Last day: nothing at/after the return flight's departure. must-leave-by =
+    return departure - 3h. Breakfast only if >=09:00, lunch if >=14:00, dinner
+    if >=20:00, attraction needs a free 2h gap before must-leave-by. If
+    nothing fits, all null. Prefer a later return flight unless it's
     meaningfully pricier or adds a connection.
-  * Day 1: usable-from = arrival + 1.5h. No breakfast. Lunch only if
-    usable-from <= 13:30. Dinner always unless usable-from > 20:00. One
-    attraction only with a free 2h gap.
   * Middle days: breakfast, lunch, dinner, one attraction - no buffer math.
+- Use each restaurant and each attraction AT MOST ONCE across the whole trip -
+  vary choices across days and meals even if that means picking a
+  lower-ranked option. (The hotel may repeat - it's one stay.)
 - Vary restaurants across meals when options exist. Heavy dinner cuisine
   (seafood boil, hotpot, fine dining) is NOT breakfast - leave breakfast null
   over forcing a bad fit.
@@ -1077,6 +1271,18 @@ response is validated, not part of what you should return.
 
 Use judgment about meal appropriateness when selecting/keeping restaurant
 choices: heavy dinner-style cuisine is usually not suitable for breakfast.
+
+Keep the itinerary usable - these constraints always apply, including to the
+parts you leave unchanged:
+- Never schedule anything at/after an outbound flight's departure on its day
+  (an overnight outbound means the departure day holds ONLY the flight), and
+  never schedule anything at/after the return flight's departure on the last
+  day.
+- Never put the hotel on the outbound flight day, and never give it a
+  check-in before the outbound flight lands. The hotel may repeat across the
+  nights of the stay.
+- Each restaurant and each attraction appears at most once across the whole
+  trip - never reuse one you're keeping from the current itinerary.
 
 CRITICAL: when including a flight or hotel object (whether unchanged or newly
 selected), you MUST preserve ALL fields exactly as given in the source data,
