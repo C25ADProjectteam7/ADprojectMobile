@@ -63,6 +63,23 @@ public class MlClient {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> predictHotelPriceV2(Map<String, Object> request) {
+        String url = mlBaseUrl + "/api/ml/v2/hotel-price/by-hotel-id";
+
+        try {
+            ResponseEntity<Map> response =
+                    restTemplate.postForEntity(url, jsonHeaders(request), Map.class);
+            return (Map<String, Object>) response.getBody();
+        } catch (RestClientException e) {
+            throw new ExternalApiException(
+                    "MLService",
+                    url + " — " + e.getMessage(),
+                    e
+            );
+        }
+    }
+
     /** camelCase → snake_case: checkInDate → check_in_date */
     private String toSnakeCase(String camel) {
         StringBuilder sb = new StringBuilder();
