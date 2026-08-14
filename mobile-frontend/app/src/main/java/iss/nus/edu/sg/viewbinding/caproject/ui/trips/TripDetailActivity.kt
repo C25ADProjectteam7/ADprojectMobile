@@ -186,7 +186,6 @@ class TripDetailActivity : AuthenticatedActivity() {
     private fun setContentVisible(isVisible: Boolean) {
         binding.daySummaryCard.isVisible = isVisible
         binding.itineraryCard.isVisible = isVisible
-        binding.recommendationsCard.isVisible = isVisible
         binding.tripPrimaryActions.isVisible = isVisible
         binding.tripManagementActions.isVisible = isVisible
         if (!isVisible) binding.agentTaskContainer.isVisible = false
@@ -206,9 +205,6 @@ class TripDetailActivity : AuthenticatedActivity() {
                 selectedDayIndex += 1
                 bindSelectedDay()
             }
-        }
-        binding.previewRecommendationsButton.setOnClickListener {
-            Snackbar.make(binding.root, R.string.recommendations_mock_notice, Snackbar.LENGTH_LONG).show()
         }
         binding.requestModificationButton.setOnClickListener { showAgentChatDialog() }
         binding.agentTaskRetryButton.setOnClickListener { agentTaskRetryAction?.invoke() }
@@ -387,11 +383,23 @@ class TripDetailActivity : AuthenticatedActivity() {
 
     private fun showAgentProgress(progress: AgentTaskProgress) {
         binding.agentTaskContainer.isVisible = true
-        binding.agentTaskStatus.text = getString(
-            R.string.agent_task_accepted_format,
-            progress.taskId,
-            progress.status,
-        )
+        // Prefer the backend's streaming stage ("Searching flights and
+        // hotels…") over the raw status once available; fall back to the
+        // generic taskId/status text for unknown stages.
+        val stageLabelRes = AgentStageLabels.labelResFor(progress.stage)
+        binding.agentTaskStatus.text = if (stageLabelRes != null) {
+            getString(
+                R.string.agent_task_stage_format,
+                progress.taskId,
+                getString(stageLabelRes),
+            )
+        } else {
+            getString(
+                R.string.agent_task_accepted_format,
+                progress.taskId,
+                progress.status,
+            )
+        }
         binding.agentTaskRetryButton.isVisible = false
         binding.requestModificationButton.isEnabled = false
         agentTaskRetryAction = null

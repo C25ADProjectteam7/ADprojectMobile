@@ -68,4 +68,16 @@ class InputValidatorTest {
 
         assertFalse(InputValidator.isValidDateRange(startDate, endDate))
     }
+
+    @Test
+    fun startDateInPast_isRejected() {
+        assertFalse(InputValidator.isStartDateTodayOrLater(LocalDate.now().minusDays(1)))
+    }
+
+    @Test
+    fun startDateTodayOrFuture_isAccepted() {
+        assertTrue(InputValidator.isStartDateTodayOrLater(LocalDate.now()))
+        assertTrue(InputValidator.isStartDateTodayOrLater(LocalDate.now().plusDays(7)))
+        assertFalse(InputValidator.isStartDateTodayOrLater(null))
+    }
 }

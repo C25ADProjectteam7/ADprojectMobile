@@ -30,8 +30,11 @@ class TripRequestActivity : AuthenticatedActivity() {
     private lateinit var binding: ActivityTripRequestBinding
     private lateinit var tripRepository: TripRepository
     private val dateFormatter = DateTimeFormatter.ofPattern("dd MMM uuuu", Locale.ENGLISH)
-    private var startDate: LocalDate? = LocalDate.of(2026, 8, 12)
-    private var endDate: LocalDate? = LocalDate.of(2026, 8, 14)
+    // Rolling defaults a week out: flight/hotel providers (Duffel, LiteAPI)
+    // only offer inventory for today-or-later dates, so a fixed date like
+    // 2026-08-12 silently stops working once it falls into the past.
+    private var startDate: LocalDate? = LocalDate.now().plusDays(DEFAULT_LEAD_DAYS)
+    private var endDate: LocalDate? = LocalDate.now().plusDays(DEFAULT_LEAD_DAYS + 2)
     private var editingTrip: TripRequestData? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,6 +77,11 @@ class TripRequestActivity : AuthenticatedActivity() {
         binding.sendToAgentButton.setOnClickListener { submitTripRequest() }
         binding.tripRequestRoot.setOnClickListener { hideKeyboard() }
 
+        // Prefill the rolling default dates so the traveler always sees what
+        // will be sent to the Agent (editing an existing trip overwrites both).
+        binding.startDateInput.setText(startDate?.format(dateFormatter))
+        binding.endDateInput.setText(endDate?.format(dateFormatter))
+
         editingTrip?.let(::bindEditingTrip)
         setupBottomNavigation()
     }
@@ -104,7 +112,8 @@ class TripRequestActivity : AuthenticatedActivity() {
     }
 
     private fun showDatePicker(initialDate: LocalDate?, onDateSelected: (LocalDate) -> Unit) {
-        val date = initialDate ?: LocalDate.now()
+        val today = LocalDate.now()
+        val date = initialDate ?: today
         DatePickerDialog(
             this,
             { _, year, month, dayOfMonth ->
@@ -113,7 +122,12 @@ class TripRequestActivity : AuthenticatedActivity() {
             date.year,
             date.monthValue - 1,
             date.dayOfMonth,
-        ).show()
+        ).apply {
+            // Providers have no inventory for past dates - block them in the
+            // picker instead of letting the Agent fail later.
+            datePicker.minDate = today.atStartOfDay(java.time.ZoneId.systemDefault())
+                .toInstant().toEpochMilli()
+        }.show()
     }
 
     private fun submitTripRequest() {
@@ -130,11 +144,18 @@ class TripRequestActivity : AuthenticatedActivity() {
             null
         }
 
-        binding.startDateInputLayout.error = if (startDate == null) {
-            isValid = false
-            getString(R.string.start_date_required)
-        } else {
-            null
+        binding.startDateInputLayout.error = when {
+            startDate == null -> {
+                isValid = false
+                getString(R.string.start_date_required)
+            }
+
+            !InputValidator.isStartDateTodayOrLater(startDate) -> {
+                isValid = false
+                getString(R.string.start_date_past)
+            }
+
+            else -> null
         }
 
         binding.endDateInputLayout.error = when {
@@ -261,6 +282,8 @@ class TripRequestActivity : AuthenticatedActivity() {
 
     companion object {
         private const val EXTRA_EDIT_TRIP = "edit_trip"
+        // How many days after today the default trip starts (end = +2 nights).
+        private const val DEFAULT_LEAD_DAYS = 7L
 
         fun createEditIntent(context: Context, trip: TripRequestData): Intent {
             return Intent(context, TripRequestActivity::class.java).putExtra(EXTRA_EDIT_TRIP, trip)

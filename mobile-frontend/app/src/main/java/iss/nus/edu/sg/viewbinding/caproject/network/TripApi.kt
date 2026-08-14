@@ -41,4 +41,10 @@ interface TripApi {
         @Path("id") id: Long,
         @Body request: AgentChatRequest,
     ): AgentTaskStartResponse
+
+    @POST("api/trips/{id}/agent-modify")
+    suspend fun startAgentModify(
+        @Path("id") id: Long,
+        @Body request: AgentChatRequest,
+    ): AgentTaskStartResponse
 }

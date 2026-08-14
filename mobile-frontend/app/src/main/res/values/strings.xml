@@ -157,6 +157,7 @@
     <string name="trip_request_sent">Trip request sent. Your itinerary is being prepared.</string>
     <string name="destination_required">Enter a destination</string>
     <string name="start_date_required">Select a start date</string>
+    <string name="start_date_past">Start date cannot be in the past</string>
     <string name="end_date_required">Select an end date</string>
     <string name="end_date_invalid">End date cannot be before start date</string>
     <string name="budget_required">Enter a budget</string>
@@ -192,6 +193,12 @@
     <string name="agent_changes_later">Agent itinerary changes will be implemented in a later phase.</string>
     <string name="agent_generating_itinerary">The Agent is generating your itinerary. This can take up to about 90 seconds.</string>
     <string name="agent_task_progress_format">Agent task %1$s · %2$s</string>
+    <string name="agent_task_stage_format">Agent task %1$s · %2$s</string>
+    <string name="agent_stage_understanding_request">Understanding your request…</string>
+    <string name="agent_stage_resolving_locations">Resolving locations…</string>
+    <string name="agent_stage_searching_flights_hotels">Searching flights and hotels…</string>
+    <string name="agent_stage_assembling_itinerary">Assembling your itinerary…</string>
+    <string name="agent_stage_finishing">Finishing up…</string>
     <string name="agent_itinerary_failed">The Agent could not generate this itinerary. Try again.</string>
     <string name="agent_itinerary_timeout">The Agent is still working. Retry to continue checking the same task.</string>
     <string name="agent_itinerary_invalid_response">The Agent returned an unexpected result. Try generating the itinerary again.</string>

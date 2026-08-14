@@ -47,4 +47,8 @@ data class AgentTaskResponse(
     val error: String? = null,
     val tripId: Long? = null,
     val createdAt: Long? = null,
+    // Streaming progress from the backend (e.g. "searching_flights_hotels"),
+    // pushed by the Agent while the task is PROCESSING - see AgentStageLabels
+    // for the UI mapping.
+    val stage: String? = null,
 )

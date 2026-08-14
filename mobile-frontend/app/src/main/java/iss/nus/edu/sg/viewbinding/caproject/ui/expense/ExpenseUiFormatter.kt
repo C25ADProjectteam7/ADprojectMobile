@@ -27,6 +27,14 @@ internal object ExpenseUiFormatter {
         return "${expense.expenseDate.format(dateFormatter)} · ${category(expense.category)}"
     }
 
+    /** "✈ Tokyo · Tokyo Business Trip" from the claim's trip context, or
+     * null when the backend sent neither field (older API). */
+    fun tripLabel(expense: ExpenseRecord): String? {
+        val parts = listOfNotNull(expense.tripDestination, expense.tripTitle)
+            .filter(String::isNotBlank)
+        return parts.joinToString(" · ").takeIf(String::isNotBlank)
+    }
+
     fun submittedAt(expense: ExpenseRecord): String = expense.submittedAt.format(submittedFormatter)
 
     fun category(category: String): String {

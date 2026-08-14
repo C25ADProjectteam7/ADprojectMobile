@@ -125,6 +125,8 @@ class ExpenseRepository(
             merchant = metadata.merchant ?: normalizedCategory.toDisplayLabel(),
             expenseDate = metadata.date ?: submittedDateTime.toLocalDate(),
             notes = metadata.notes,
+            tripTitle = tripTitle?.takeIf(String::isNotBlank),
+            tripDestination = tripDestination?.takeIf(String::isNotBlank),
         )
     }
 

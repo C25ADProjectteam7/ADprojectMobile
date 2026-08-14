@@ -169,11 +169,23 @@ class ItineraryReviewActivity : AuthenticatedActivity() {
 
     private fun showAgentProgress(progress: AgentTaskProgress) {
         binding.agentTaskStatus.isVisible = true
-        binding.agentTaskStatus.text = getString(
-            R.string.agent_task_progress_format,
-            progress.taskId,
-            progress.status,
-        )
+        // Prefer the backend's streaming stage ("Searching flights and
+        // hotels…") over the raw status once available; fall back to the
+        // generic taskId/status text for unknown stages.
+        val stageLabelRes = AgentStageLabels.labelResFor(progress.stage)
+        binding.agentTaskStatus.text = if (stageLabelRes != null) {
+            getString(
+                R.string.agent_task_stage_format,
+                progress.taskId,
+                getString(stageLabelRes),
+            )
+        } else {
+            getString(
+                R.string.agent_task_progress_format,
+                progress.taskId,
+                progress.status,
+            )
+        }
     }
 
     private fun showState(

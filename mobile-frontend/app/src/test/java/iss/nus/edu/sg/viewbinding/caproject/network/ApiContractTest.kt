@@ -33,7 +33,7 @@ class ApiContractTest {
         ).flatMap(::endpointsFor).toSet()
 
         assertEquals(EXPECTED_ENDPOINTS, endpoints)
-        assertEquals(26, endpoints.size)
+        assertEquals(27, endpoints.size)
     }
 
     @Test
@@ -118,6 +118,7 @@ class ApiContractTest {
             "DELETE api/trips/{id}",
             "GET api/trips/{id}/detail",
             "POST api/trips/{id}/agent-chat",
+            "POST api/trips/{id}/agent-modify",
             "POST api/agent/extract-requirements",
             "POST api/agent/generate-itinerary",
             "POST api/agent/modify-itinerary",

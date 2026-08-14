@@ -88,6 +88,12 @@ class TripRepository(
         }
     }
 
+    suspend fun startAgentModify(tripId: Long, message: String): ApiResult<AgentTaskStartResponse> {
+        return executeApiCall(gson) {
+            tripApi.startAgentModify(tripId, AgentChatRequest(message = message))
+        }
+    }
+
     private suspend fun <Network, Domain> executeAndMap(
         request: suspend () -> Network,
         mapper: (Network) -> Domain,

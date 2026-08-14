@@ -21,4 +21,6 @@ data class ExpenseResponse(
     val receiptUrl: String?,
     val status: String,
     val submittedAt: String,
+    val tripTitle: String? = null,
+    val tripDestination: String? = null,
 )

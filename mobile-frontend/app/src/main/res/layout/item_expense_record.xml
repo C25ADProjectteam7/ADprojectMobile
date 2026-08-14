@@ -40,6 +40,17 @@
                     android:textStyle="bold" />
 
                 <TextView
+                    android:id="@+id/expenseTrip"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/travel_green"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
                     android:id="@+id/expenseDetails"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
