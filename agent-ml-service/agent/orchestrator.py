@@ -581,9 +581,12 @@ Rules:
   that morning).
 - EVERY activity object (flight, hotel, breakfast, attraction, lunch, dinner)
   MUST include a "startTime" field formatted as "HH:MM" (24-hour clock).
-  Hotel startTime is the standard check-in time (e.g. "14:00"); hotel must also
-  include "endTime" as the check-out time. Derive meal/attraction startTime
-  from the buffer logic below - never leave it out, never output null.
+  Hotel startTime is the standard check-in time (e.g. "14:00") EXCEPT on the
+  arrival day, where check-in MUST be at least 1.5 hours AFTER the outbound
+  flight's arrivalTime (a 19:40 arrival means check-in 21:30, never 14:00);
+  hotel must also include "endTime" as the check-out time (standard "12:00").
+  Derive meal/attraction startTime from the buffer logic below - never leave
+  it out, never output null.
 
 Meal/attraction scheduling MUST be computed from actual flight times using the
 buffer logic below - do not guess based on the departure/arrival time alone.

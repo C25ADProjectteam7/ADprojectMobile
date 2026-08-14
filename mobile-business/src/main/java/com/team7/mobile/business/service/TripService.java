@@ -517,8 +517,18 @@ public class TripService {
         // the key present, value null). firstNonNull's plain .get() + null
         // check treats "absent" and "present-but-null" the same way, so the
         // fallback still kicks in either way.
-        item.setStartTime(parseActivityTime(firstNonNull(activity.get("startTime"), activity.get("departureTime")), dayDate));
-        item.setEndTime(parseActivityTime(firstNonNull(activity.get("endTime"), activity.get("arrivalTime")), dayDate));
+        LocalDateTime start = parseActivityTime(firstNonNull(activity.get("startTime"), activity.get("departureTime")), dayDate);
+        LocalDateTime end = parseActivityTime(firstNonNull(activity.get("endTime"), activity.get("arrivalTime")), dayDate);
+        // Cross-midnight handling: a bare "HH:MM" end time earlier than the
+        // start time (e.g. hotel check-in 14:00 / check-out 12:00, or a return
+        // flight departing 20:50 and landing 10:40) means the end belongs to
+        // the NEXT day. The Agent only supplies clock times without dates, so
+        // roll the date forward here instead of showing an impossible range.
+        if (start != null && end != null && !end.isAfter(start)) {
+            end = end.plusDays(1);
+        }
+        item.setStartTime(start);
+        item.setEndTime(end);
         // Agent activities never carry a "location" key - hotel/restaurant/
         // attraction data uses "address" instead (verified against a real
         // generated itinerary); flight has no address-equivalent single
@@ -598,7 +608,13 @@ public class TripService {
     }
 
     private ItineraryDTO toItineraryDTO(Itinerary itinerary, List<ItineraryItem> itineraryItems) {
-        List<ItineraryItemDTO> items = itineraryItems.stream().map(this::toItemDTO)
+        // Chronological order for the day - null start times go last so
+        // "Any time" activities never jump ahead of scheduled ones.
+        List<ItineraryItemDTO> items = itineraryItems.stream()
+                .sorted(java.util.Comparator.comparing(
+                        ItineraryItem::getStartTime,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+                .map(this::toItemDTO)
                 .collect(Collectors.toList());
         return new ItineraryDTO(itinerary.getId(), itinerary.getDayNumber(), itinerary.getDate(),
                 itinerary.getGeneratedByAgent(), items);
