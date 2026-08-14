@@ -6,6 +6,7 @@ import com.team7.mobile.common.dto.ItineraryItemDTO;
 import com.team7.mobile.common.dto.TripDTO;
 import com.team7.mobile.common.dto.TripDetailDTO;
 import com.team7.mobile.common.dto.TripRequest;
+import com.team7.mobile.common.exception.BusinessException;
 import com.team7.mobile.common.exception.ForbiddenException;
 import com.team7.mobile.common.exception.ResourceNotFoundException;
 import com.team7.mobile.data.entity.AgentConversation;
@@ -228,6 +229,14 @@ public class TripService {
 
         Map<String, Object> itinerary = agentOrchestrator.generateItinerary(tripData, stageListener);
 
+        // Agent-side validation failures (e.g. "start date is in the past")
+        // come back as {"error": "..."} from the Python service. Fail the task
+        // with that message so the traveler sees the real reason - persisting
+        // it as a PLANNED trip would leave a silently empty itinerary.
+        if (itinerary.get("error") instanceof String errorMsg) {
+            throw new BusinessException("AGENT_REJECTED", errorMsg, 400);
+        }
+
         // Step 3: persist extracted info + generated itinerary
         if (extracted.get("originCity") != null) trip.setOriginCity((String) extracted.get("originCity"));
         if (extracted.get("destination") != null) trip.setDestination((String) extracted.get("destination"));
@@ -396,6 +405,12 @@ public class TripService {
         saveConversationTurn(user, trip, AgentConversation.Role.USER, userRequest);
 
         Map<String, Object> updatedItinerary = agentOrchestrator.modifyItinerary(currentItinerary, userRequest, stageListener);
+
+        // Same guard as agentChat(): a Python-side {"error": ...} result must
+        // fail the task visibly, not be persisted as a valid itinerary.
+        if (updatedItinerary.get("error") instanceof String errorMsg) {
+            throw new BusinessException("AGENT_REJECTED", errorMsg, 400);
+        }
 
         // orchestrator.py's _validate_and_normalize_itinerary now requires
         // changeApplied to be a real boolean whenever existing_itinerary is
