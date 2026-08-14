@@ -47,6 +47,30 @@ BUSINESS_TOLERANCE = 0.15
 MODEL_VERSION = "india-hybrid-v1"
 
 
+def _make_joblib_portable_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Strip build-environment dtype metadata so the pickle loads anywhere.
+
+    pandas >= 3.0 stores string columns in a pyarrow-backed `str` dtype. That
+    dtype travels inside the pickle, so an artifact built on pandas 3.x cannot
+    be read by the pinned runtime (pandas 2.2.2): it fails first with
+    ModuleNotFoundError: pyarrow, and then - even with pyarrow installed - with
+    TypeError: StringDtype.__init__() takes from 1 to 2 positional arguments.
+
+    Casting the string VALUES is not sufficient: `df.columns` is itself a
+    string Index and carries the same dtype. Both are normalized here.
+
+    Values, row order and column order are preserved exactly; only the storage
+    dtype of text changes (pyarrow-backed str -> plain object).
+    """
+    out = df.copy()
+    for c in out.columns:
+        if pd.api.types.is_string_dtype(out[c]) or out[c].dtype == object:
+            out[c] = out[c].astype(object)
+    out.columns = pd.Index(list(out.columns), dtype=object)
+    out.index = pd.RangeIndex(len(out))
+    return out
+
+
 def main() -> None:
     d = pd.read_parquet(CLEAN)
     d["hotel_key"] = d.hotel_name.map(normalize_name)
@@ -147,8 +171,8 @@ def main() -> None:
 
     joblib.dump({
         "metadata": meta,
-        "b2_hotel_room": hr.reset_index(),
-        "b2_hotel": h.reset_index(),
+        "b2_hotel_room": _make_joblib_portable_dataframe(hr.reset_index()),
+        "b2_hotel": _make_joblib_portable_dataframe(h.reset_index()),
         "known_hotel_keys": sorted(known_keys),
         "ambiguous_hotel_keys": sorted(ambiguous),
         "hotel_obs_counts": counts[counts >= MIN_HOTEL_OBS].to_dict(),
@@ -166,6 +190,12 @@ def main() -> None:
     print(f"[verify] reload OK, predictions identical on 200 rows")
     print(f"[verify] known keys {len(back['known_hotel_keys']):,} | "
           f"ambiguous {len(back['ambiguous_hotel_keys']):,}")
+    for k in ("b2_hotel_room", "b2_hotel"):
+        df = back[k]
+        bad = [c for c in df.columns if df[c].dtype not in ("object", "float64", "int64")]
+        assert not bad, f"{k} has non-portable dtypes {bad} - pinned pandas cannot load this"
+        assert df.columns.dtype == object, f"{k} column Index is not portable"
+    print("[verify] artifact dtypes are portable to the pinned runtime (pandas 2.2.2)")
     print(f"[verify] V1/Osaka artifacts untouched: "
           f"{(ROOT/'models'/'hotel_price_baseline.joblib').exists()} / "
           f"{(ROOT/'models'/'hotel_price_v2_osaka_tiers.joblib').exists()}")
