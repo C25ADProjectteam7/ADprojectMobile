@@ -98,6 +98,16 @@ async def predict_india_hotel_price_by_hotel_id(
         board_type=probe.get("boardType"),
         board_name=probe.get("boardName"),
         refundable_tag=probe.get("refundableTag"),
+        # V3 unseen-hotel signals, straight from LiteAPI - never user-supplied.
+        # The comparable quote is passed as current_price above and is compared
+        # to the prediction afterwards; it never enters the feature row.
+        city=probe.get("city"),
+        rating=probe.get("rating"),
+        review_count=probe.get("reviewCount"),
+        stars=probe.get("stars"),
+        chain=probe.get("chain"),
+        hotel_type_id=probe.get("hotelTypeId"),
+        facility_ids=probe.get("facilityIds"),
     )
 
 
