@@ -81,6 +81,11 @@ class ExpensesFragment : Fragment() {
     private fun addExpenseCard(expense: ExpenseRecord) {
         val item = ItemExpenseRecordBinding.inflate(layoutInflater, binding.expenseList, false)
         item.expenseMerchant.text = expense.merchant
+        // Trip association (e.g. "✈ Tokyo · Tokyo Business Trip") - hidden
+        // when the backend didn't send trip context (older API).
+        val tripLabel = ExpenseUiFormatter.tripLabel(expense)
+        item.expenseTrip.isVisible = tripLabel != null
+        item.expenseTrip.text = tripLabel
         item.expenseDetails.text = ExpenseUiFormatter.details(expense)
         item.expenseAmount.text = ExpenseUiFormatter.amount(expense.amount, expense.currency)
         item.expenseReceipt.text = getString(

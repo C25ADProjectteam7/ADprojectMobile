@@ -9,6 +9,19 @@ from agent.liteapi_client import search_hotels_by_coordinates
 from agent.liteapi_client import book_hotel_with_retry
 from agent.google_places_client import search_restaurants as places_search_restaurants
 from agent.google_places_client import search_attractions as places_search_attractions
+from agent.google_places_client import resolve_city_center
+
+
+async def _city_coordinates(city: str):
+    """Coordinates for city-wide searches. Prefers the true city center
+    (via Google Places) - Duffel resolves cities to their FIRST AIRPORT's
+    coordinates, which biases hotel results toward airport hotels and can
+    also skew restaurants/attractions. Falls back to airport coordinates
+    when the city-center lookup fails."""
+    center = await resolve_city_center(city)
+    if center:
+        return center
+    return await resolve_city_to_coordinates(city)
 
 
 def get_tool_schemas() -> list[dict]:
@@ -137,7 +150,7 @@ async def search_hotels(city: str, check_in: str, check_out: str, budget: float,
     """Backlog #5/#7: real hotel search via LiteAPI, with automatic budget-relaxation
     fallback. guest_nationality is a business-logic parameter bound by the
     orchestrator - never supplied by the LLM."""
-    coords = await resolve_city_to_coordinates(city)
+    coords = await _city_coordinates(city)
     if not coords:
         return {"hotels": [], "budgetRelaxed": False, "note": f"Could not resolve location for '{city}'."}
     lat, lng = coords
@@ -145,7 +158,7 @@ async def search_hotels(city: str, check_in: str, check_out: str, budget: float,
 
 
 async def search_restaurants(city: str, cuisine: str = "") -> dict:
-    coords = await resolve_city_to_coordinates(city)
+    coords = await _city_coordinates(city)
     if not coords:
         return {"restaurants": [], "preferenceRelaxed": False, "note": f"Could not resolve location for '{city}'."}
     lat, lng = coords
@@ -153,7 +166,7 @@ async def search_restaurants(city: str, cuisine: str = "") -> dict:
 
 
 async def search_attractions(city: str, category: str = "") -> dict:
-    coords = await resolve_city_to_coordinates(city)
+    coords = await _city_coordinates(city)
     if not coords:
         return {"attractions": [], "preferenceRelaxed": False, "note": f"Could not resolve location for '{city}'."}
     lat, lng = coords

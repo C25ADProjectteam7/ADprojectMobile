@@ -3,7 +3,7 @@ plugins {
 }
 
 val apiBaseUrl = providers.gradleProperty("API_BASE_URL")
-    .orElse("http://10.0.2.2:8080/")
+    .orElse("http://168.144.253.212:8080/")   // Digital Ocean server (Android emulator/device)
 val apiBaseUrlValue = apiBaseUrl.get().also { value ->
     require(value.endsWith("/")) { "API_BASE_URL must end with '/'" }
 }

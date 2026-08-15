@@ -10,6 +10,10 @@ public class ExpenseDTO {
 
     private Long id;
     private Long tripId;
+    /** Trip title the claim belongs to (e.g. "Tokyo Business Trip"). */
+    private String tripTitle;
+    /** Trip destination city the claim belongs to (e.g. "Tokyo"). */
+    private String tripDestination;
     private Long userId;
     private String category;      // FLIGHT / HOTEL / MEAL / TRANSPORT / OTHER
     private BigDecimal amount;
@@ -45,8 +49,13 @@ public class ExpenseDTO {
         this.approverName = approverName;
     }
 
+    public void setTripTitle(String tripTitle) { this.tripTitle = tripTitle; }
+    public void setTripDestination(String tripDestination) { this.tripDestination = tripDestination; }
+
     public Long getId() { return id; }
     public Long getTripId() { return tripId; }
+    public String getTripTitle() { return tripTitle; }
+    public String getTripDestination() { return tripDestination; }
     public Long getUserId() { return userId; }
     public String getCategory() { return category; }
     public BigDecimal getAmount() { return amount; }

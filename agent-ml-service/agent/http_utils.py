@@ -10,6 +10,14 @@ import functools
 import httpx
 
 
+class SearchApiError(Exception):
+    """A search API rejected the request with a message safe to show to the
+    LLM (and thus to the traveler via itinerary warnings) - e.g. Duffel's
+    "departure_date cannot be in the past". Raised by tool functions in
+    *_client.py; orchestrator._execute_tool_calls passes its message through
+    to the tool result instead of the generic failure text."""
+
+
 def retry_on_timeout(max_attempts: int = 3, base_delay: float = 1.0, exceptions=httpx.TimeoutException):
     """Decorator: retries an async function on timeout, with a short
     exponential backoff between attempts. Only apply this to read-only calls

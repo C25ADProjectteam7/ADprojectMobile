@@ -14,7 +14,7 @@ still used to support LiteAPI's coordinate-based hotel search.
 """
 import httpx
 import config
-from agent.http_utils import retry_on_timeout
+from agent.http_utils import retry_on_timeout, SearchApiError
 
 DUFFEL_VERSION = "v2"  # required header, pins the API schema version
 
@@ -24,6 +24,21 @@ DUFFEL_VERSION = "v2"  # required header, pins the API schema version
 # three resolve_* functions below can reuse the same result instead of each
 # making its own identical API call.
 _place_cache: dict[str, list] = {}
+
+
+def _extract_error_message(response: httpx.Response) -> str:
+    """Reads the human-readable error from a Duffel error response body,
+    e.g. {"errors": [{"message": "departure_date must not be in the past"}]}.
+    Falls back to the HTTP status text when the body isn't parseable."""
+    try:
+        errors = response.json().get("errors") or []
+        if errors:
+            parts = [str(e.get("message", "")) for e in errors if e.get("message")]
+            if parts:
+                return "; ".join(parts)
+    except (ValueError, AttributeError):
+        pass
+    return f"HTTP {response.status_code} {response.reason_phrase or ''}".strip()
 
 
 def _duffel_headers() -> dict:
@@ -140,7 +155,14 @@ async def search_flights(origin: str, destination: str, date: str) -> list[dict]
             json=payload,
             params={"return_offers": "true"},
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            # e.g. 422 "departure_date cannot be in the past" - without this the
+            # failure only reaches the LLM as a generic tool error and the
+            # itinerary ends up with an unhelpful "no flights found" warning.
+            detail = _extract_error_message(response)
+            raise SearchApiError(
+                f"Flight search rejected ({origin}->{destination} on {date}): {detail}"
+            )
         data = response.json()
 
     offers = data["data"].get("offers", [])

@@ -17,6 +17,8 @@ data class ExpenseRecord(
     val merchant: String,
     val expenseDate: LocalDate,
     val notes: String,
+    val tripTitle: String? = null,
+    val tripDestination: String? = null,
 ) {
     val receiptName: String
         get() = receiptUrl?.substringAfterLast('/')?.takeIf(String::isNotBlank).orEmpty()

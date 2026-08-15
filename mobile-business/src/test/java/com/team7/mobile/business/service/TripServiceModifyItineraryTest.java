@@ -106,7 +106,11 @@ class TripServiceModifyItineraryTest {
                 "totalCostSGD", 450.0,
                 "warnings", List.of("Switched to a cheaper hotel per your request.")
         );
-        when(agentOrchestrator.modifyItinerary(any(), eq("find me a cheaper hotel"))).thenReturn(updated);
+        // TripService calls the 3-arg overload (stage listener, null on the
+        // plain modify path) - the 2-arg mock stub would silently return an
+        // empty map via Mockito's default answer and break every assertion.
+        when(agentOrchestrator.modifyItinerary(any(), eq("find me a cheaper hotel"), any()))
+                .thenReturn(updated);
 
         Map<String, Object> result = tripService.modifyItinerary(42L, "find me a cheaper hotel");
 
@@ -118,7 +122,7 @@ class TripServiceModifyItineraryTest {
         // confirms the round trip actually carries the full itinerary, not a
         // reconstruction from the lossy Itinerary/ItineraryItem rows.
         var captor = org.mockito.ArgumentCaptor.forClass(Map.class);
-        verify(agentOrchestrator).modifyItinerary(captor.capture(), eq("find me a cheaper hotel"));
+        verify(agentOrchestrator).modifyItinerary(captor.capture(), eq("find me a cheaper hotel"), any());
         Map<String, Object> passedIn = captor.getValue();
         assertEquals(500.0, passedIn.get("totalCostSGD"));
 
@@ -158,7 +162,7 @@ class TripServiceModifyItineraryTest {
                 "warnings", List.of(honestNote),
                 "changeApplied", false
         );
-        when(agentOrchestrator.modifyItinerary(any(), eq("find me a more expensive hotel")))
+        when(agentOrchestrator.modifyItinerary(any(), eq("find me a more expensive hotel"), any()))
                 .thenReturn(updated);
 
         Map<String, Object> result = tripService.modifyItinerary(42L, "find me a more expensive hotel");
@@ -198,7 +202,7 @@ class TripServiceModifyItineraryTest {
                 "warnings", List.of(),
                 "changeApplied", false
         );
-        when(agentOrchestrator.modifyItinerary(any(), eq("find me a more expensive hotel")))
+        when(agentOrchestrator.modifyItinerary(any(), eq("find me a more expensive hotel"), any()))
                 .thenReturn(updated);
 
         Map<String, Object> result = tripService.modifyItinerary(42L, "find me a more expensive hotel");
@@ -239,7 +243,7 @@ class TripServiceModifyItineraryTest {
                 "warnings", List.of(),
                 "changeApplied", true
         );
-        when(agentOrchestrator.modifyItinerary(any(), eq("move my flight earlier")))
+        when(agentOrchestrator.modifyItinerary(any(), eq("move my flight earlier"), any()))
                 .thenReturn(updated);
 
         tripService.modifyItinerary(42L, "move my flight earlier");
@@ -291,7 +295,7 @@ class TripServiceModifyItineraryTest {
                 "warnings", List.of(),
                 "changeApplied", true
         );
-        when(agentOrchestrator.modifyItinerary(any(), eq("move my flight earlier")))
+        when(agentOrchestrator.modifyItinerary(any(), eq("move my flight earlier"), any()))
                 .thenReturn(updated);
 
         tripService.modifyItinerary(42L, "move my flight earlier");
@@ -330,7 +334,7 @@ class TripServiceModifyItineraryTest {
                 "warnings", List.of(),
                 "changeApplied", true
         );
-        when(agentOrchestrator.modifyItinerary(any(), eq("find a hotel")))
+        when(agentOrchestrator.modifyItinerary(any(), eq("find a hotel"), any()))
                 .thenReturn(updated);
 
         tripService.modifyItinerary(42L, "find a hotel");

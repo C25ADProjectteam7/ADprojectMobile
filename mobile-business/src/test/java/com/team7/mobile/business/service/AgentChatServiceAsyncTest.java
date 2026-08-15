@@ -38,7 +38,10 @@ class AgentChatServiceAsyncTest {
     @Test
     void startTaskReturnsBeforeSlowAgentChatCompletes() throws InterruptedException {
         long simulatedWorkMillis = 2000;
-        when(tripService.agentChat(anyLong(), any())).thenAnswer(invocation -> {
+        // AgentChatService invokes the 3-arg overload with a stage listener;
+        // stubbing the 2-arg one would never match (see the matching fix in
+        // TripServiceModifyItineraryTest for the same failure mode).
+        when(tripService.agentChat(anyLong(), any(), any())).thenAnswer(invocation -> {
             Thread.sleep(simulatedWorkMillis);
             return Map.of("status", "ITINERARY_READY");
         });
@@ -65,7 +68,7 @@ class AgentChatServiceAsyncTest {
     @Test
     void startModifyTaskReturnsBeforeSlowModifyItineraryCompletes() throws InterruptedException {
         long simulatedWorkMillis = 2000;
-        when(tripService.modifyItinerary(anyLong(), any())).thenAnswer(invocation -> {
+        when(tripService.modifyItinerary(anyLong(), any(), any())).thenAnswer(invocation -> {
             Thread.sleep(simulatedWorkMillis);
             return Map.of("status", "ITINERARY_UPDATED");
         });

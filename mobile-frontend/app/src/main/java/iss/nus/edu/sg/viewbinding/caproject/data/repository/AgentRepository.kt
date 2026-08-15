@@ -59,7 +59,10 @@ class AgentRepository(
             taskResult.get("status")?.asString?.trim()?.uppercase()
         }.getOrNull()
         return when (resultStatus) {
-            RESULT_ITINERARY_READY -> AgentPollResult.ItineraryReady
+            RESULT_ITINERARY_READY,
+            RESULT_ITINERARY_UPDATED,
+            RESULT_NO_CHANGE_FOUND,
+            -> AgentPollResult.ItineraryReady
             RESULT_NEEDS_MORE_INFO -> {
                 val missingFields = taskResult.getAsJsonArray("missingFields")
                     ?.mapNotNull { element -> runCatching { element.asString }.getOrNull() }
@@ -85,6 +88,8 @@ class AgentRepository(
         private const val STATUS_DONE = "DONE"
         private const val STATUS_FAILED = "FAILED"
         private const val RESULT_ITINERARY_READY = "ITINERARY_READY"
+        private const val RESULT_ITINERARY_UPDATED = "ITINERARY_UPDATED"
+        private const val RESULT_NO_CHANGE_FOUND = "NO_CHANGE_FOUND"
         private const val RESULT_NEEDS_MORE_INFO = "NEEDS_MORE_INFO"
 
         fun create(context: Context): AgentRepository {

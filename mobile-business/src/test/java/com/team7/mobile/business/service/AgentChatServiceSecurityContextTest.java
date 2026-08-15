@@ -46,7 +46,9 @@ class AgentChatServiceSecurityContextTest {
 
         AtomicReference<Object> authSeenInWorker = new AtomicReference<>("NOT_CAPTURED");
         CountDownLatch latch = new CountDownLatch(1);
-        when(tripService.agentChat(anyLong(), any())).thenAnswer(invocation -> {
+        // executeAsync() invokes the 3-arg agentChat overload (stage listener)
+        // - the 2-arg stub would never match and the latch would time out.
+        when(tripService.agentChat(anyLong(), any(), any())).thenAnswer(invocation -> {
             authSeenInWorker.set(SecurityContextHolder.getContext().getAuthentication());
             latch.countDown();
             return Map.of("status", "ITINERARY_READY");

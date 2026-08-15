@@ -209,7 +209,7 @@ public class ExpenseService {
     }
 
     private ExpenseDTO toDTO(Expense expense) {
-        return new ExpenseDTO(
+        ExpenseDTO dto = new ExpenseDTO(
                 expense.getId(),
                 expense.getTrip().getId(),
                 expense.getUser().getId(),
@@ -224,5 +224,10 @@ public class ExpenseService {
                 expense.getApprovalOpinion(),
                 expense.getApproverName()
         );
+        // Trip context so the app can show WHERE the claim was for
+        // (e.g. "Tokyo Business Trip · Tokyo") without a second lookup.
+        dto.setTripTitle(expense.getTrip().getTitle());
+        dto.setTripDestination(expense.getTrip().getDestination());
+        return dto;
     }
 }

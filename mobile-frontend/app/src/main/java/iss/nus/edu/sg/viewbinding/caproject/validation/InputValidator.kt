@@ -41,5 +41,9 @@ object InputValidator {
         return startDate != null && endDate != null && !endDate.isBefore(startDate)
     }
 
+    fun isStartDateTodayOrLater(startDate: LocalDate?): Boolean {
+        return startDate != null && !startDate.isBefore(LocalDate.now())
+    }
+
     private val PHONE_PATTERN = Regex("^\\+?[0-9() -]+$")
 }

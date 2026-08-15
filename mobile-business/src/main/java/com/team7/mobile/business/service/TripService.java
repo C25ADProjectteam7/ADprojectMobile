@@ -6,6 +6,7 @@ import com.team7.mobile.common.dto.ItineraryItemDTO;
 import com.team7.mobile.common.dto.TripDTO;
 import com.team7.mobile.common.dto.TripDetailDTO;
 import com.team7.mobile.common.dto.TripRequest;
+import com.team7.mobile.common.exception.BusinessException;
 import com.team7.mobile.common.exception.ForbiddenException;
 import com.team7.mobile.common.exception.ResourceNotFoundException;
 import com.team7.mobile.data.entity.AgentConversation;
@@ -186,6 +187,14 @@ public class TripService {
     @Transactional
     @SuppressWarnings("unchecked")
     public Map<String, Object> agentChat(Long tripId, String message) {
+        return agentChat(tripId, message, null);
+    }
+
+    /** Same as agentChat(2-arg), with a stage listener for app-visible progress. */
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> agentChat(Long tripId, String message,
+                                         java.util.function.Consumer<String> stageListener) {
         Trip trip = findOwnedTrip(tripId);  // auth check
         User user = currentUser.get();
 
@@ -193,6 +202,7 @@ public class TripService {
         saveConversationTurn(user, trip, AgentConversation.Role.USER, message);
 
         // Step 1: extract structured trip requirements from free text
+        if (stageListener != null) stageListener.accept("understanding_request");
         Map<String, Object> extracted = agentOrchestrator.extractRequirements(
                 message, context.recentHistory(), context.summary());
 
@@ -217,7 +227,15 @@ public class TripService {
         Object prefs = extracted.get("preferences");
         tripData.put("preferences", prefs != null ? prefs : List.of());
 
-        Map<String, Object> itinerary = agentOrchestrator.generateItinerary(tripData);
+        Map<String, Object> itinerary = agentOrchestrator.generateItinerary(tripData, stageListener);
+
+        // Agent-side validation failures (e.g. "start date is in the past")
+        // come back as {"error": "..."} from the Python service. Fail the task
+        // with that message so the traveler sees the real reason - persisting
+        // it as a PLANNED trip would leave a silently empty itinerary.
+        if (itinerary.get("error") instanceof String errorMsg) {
+            throw new BusinessException("AGENT_REJECTED", errorMsg, 400);
+        }
 
         // Step 3: persist extracted info + generated itinerary
         if (extracted.get("originCity") != null) trip.setOriginCity((String) extracted.get("originCity"));
@@ -368,6 +386,18 @@ public class TripService {
     @Transactional
     @SuppressWarnings("unchecked")
     public Map<String, Object> modifyItinerary(Long tripId, String userRequest) {
+        return modifyItinerary(tripId, userRequest, null);
+    }
+
+    /** Same as modifyItinerary(2-arg), with a stage listener for app-visible progress.
+     * Needs its own @Transactional: AgentChatService calls THIS overload through
+     * the Spring proxy, so the annotation on the 2-arg sibling never applies -
+     * without it, saveItinerary's deleteByItineraryId throws "No EntityManager
+     * with actual transaction available" (observed live on the first real
+     * agent-modify call from the app). */
+    @Transactional
+    public Map<String, Object> modifyItinerary(Long tripId, String userRequest,
+                                               java.util.function.Consumer<String> stageListener) {
         Trip trip = findOwnedTrip(tripId);
         User user = currentUser.get();
 
@@ -380,7 +410,13 @@ public class TripService {
 
         saveConversationTurn(user, trip, AgentConversation.Role.USER, userRequest);
 
-        Map<String, Object> updatedItinerary = agentOrchestrator.modifyItinerary(currentItinerary, userRequest);
+        Map<String, Object> updatedItinerary = agentOrchestrator.modifyItinerary(currentItinerary, userRequest, stageListener);
+
+        // Same guard as agentChat(): a Python-side {"error": ...} result must
+        // fail the task visibly, not be persisted as a valid itinerary.
+        if (updatedItinerary.get("error") instanceof String errorMsg) {
+            throw new BusinessException("AGENT_REJECTED", errorMsg, 400);
+        }
 
         // orchestrator.py's _validate_and_normalize_itinerary now requires
         // changeApplied to be a real boolean whenever existing_itinerary is
@@ -517,8 +553,18 @@ public class TripService {
         // the key present, value null). firstNonNull's plain .get() + null
         // check treats "absent" and "present-but-null" the same way, so the
         // fallback still kicks in either way.
-        item.setStartTime(parseActivityTime(firstNonNull(activity.get("startTime"), activity.get("departureTime")), dayDate));
-        item.setEndTime(parseActivityTime(firstNonNull(activity.get("endTime"), activity.get("arrivalTime")), dayDate));
+        LocalDateTime start = parseActivityTime(firstNonNull(activity.get("startTime"), activity.get("departureTime")), dayDate);
+        LocalDateTime end = parseActivityTime(firstNonNull(activity.get("endTime"), activity.get("arrivalTime")), dayDate);
+        // Cross-midnight handling: a bare "HH:MM" end time earlier than the
+        // start time (e.g. hotel check-in 14:00 / check-out 12:00, or a return
+        // flight departing 20:50 and landing 10:40) means the end belongs to
+        // the NEXT day. The Agent only supplies clock times without dates, so
+        // roll the date forward here instead of showing an impossible range.
+        if (start != null && end != null && !end.isAfter(start)) {
+            end = end.plusDays(1);
+        }
+        item.setStartTime(start);
+        item.setEndTime(end);
         // Agent activities never carry a "location" key - hotel/restaurant/
         // attraction data uses "address" instead (verified against a real
         // generated itinerary); flight has no address-equivalent single
@@ -598,7 +644,13 @@ public class TripService {
     }
 
     private ItineraryDTO toItineraryDTO(Itinerary itinerary, List<ItineraryItem> itineraryItems) {
-        List<ItineraryItemDTO> items = itineraryItems.stream().map(this::toItemDTO)
+        // Chronological order for the day - null start times go last so
+        // "Any time" activities never jump ahead of scheduled ones.
+        List<ItineraryItemDTO> items = itineraryItems.stream()
+                .sorted(java.util.Comparator.comparing(
+                        ItineraryItem::getStartTime,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+                .map(this::toItemDTO)
                 .collect(Collectors.toList());
         return new ItineraryDTO(itinerary.getId(), itinerary.getDayNumber(), itinerary.getDate(),
                 itinerary.getGeneratedByAgent(), items);

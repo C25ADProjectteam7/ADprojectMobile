@@ -65,6 +65,8 @@ services:
     restart: unless-stopped
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-gemini-flash-latest}
       - DUFFEL_API_TOKEN=${DUFFEL_API_TOKEN}
       - LITEAPI_API_KEY=${LITEAPI_API_KEY}
       - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}

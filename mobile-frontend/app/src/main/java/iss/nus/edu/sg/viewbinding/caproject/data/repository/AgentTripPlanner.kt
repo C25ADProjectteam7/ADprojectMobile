@@ -32,12 +32,24 @@ class AgentTripPlanner(
         val tripId = trip.remoteId ?: return AgentPollResult.InvalidResponse
         val storedTaskId = taskStore.taskIdFor(tripId)
         val taskId = if (storedTaskId == null) {
-            val message = if (requestedChange.isNullOrBlank()) {
-                AgentTripMessageFactory.initialRequest(trip)
+            val isModification = !requestedChange.isNullOrBlank()
+            // A modification request goes to the dedicated modify endpoint
+            // (which edits the EXISTING itinerary in place) with just the
+            // change text - sending it through agent-chat would regenerate
+            // the whole trip from scratch and silently drop the change
+            // (observed live: "Add a trip to zoo" produced a zoo-less
+            // itinerary that also wiped the previous day plans).
+            val message = if (isModification) {
+                requestedChange.trim()
             } else {
-                AgentTripMessageFactory.modificationRequest(trip, requestedChange)
+                AgentTripMessageFactory.initialRequest(trip)
             }
-            when (val startResult = tripRepository.startAgentChat(tripId, message)) {
+            val startResult = if (isModification) {
+                tripRepository.startAgentModify(tripId, message)
+            } else {
+                tripRepository.startAgentChat(tripId, message)
+            }
+            when (startResult) {
                 is ApiResult.Failure -> return AgentPollResult.RequestFailure(startResult)
                 is ApiResult.Success -> {
                     val startedTaskId = runCatching { startResult.value.taskId.trim() }
@@ -71,7 +83,7 @@ class AgentTripPlanner(
                 .getOrNull()
                 ?.takeIf(String::isNotBlank)
                 ?: STATUS_PROCESSING
-            onProgress(AgentTaskProgress(taskId, status))
+            onProgress(AgentTaskProgress(taskId, status, task.stage))
         }
         if (pollResult.shouldClearStoredTask()) taskStore.remove(tripId)
         return pollResult
@@ -108,6 +120,9 @@ class AgentTripPlanner(
 data class AgentTaskProgress(
     val taskId: String,
     val status: String,
+    // Backend streaming stage (e.g. "searching_flights_hotels") while the
+    // task is PROCESSING; null when the backend didn't report one yet.
+    val stage: String? = null,
 )
 
 object AgentTripMessageFactory {

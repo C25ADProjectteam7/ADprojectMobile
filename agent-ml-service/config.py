@@ -8,7 +8,9 @@ from dotenv import load_dotenv
 
 load_dotenv()  # load .env for local dev (git-ignored)
 
-# DeepSeek API (OpenAI-compatible endpoint)
+# LLM provider (OpenAI-compatible endpoint). Default is DeepSeek; to switch
+# providers (e.g. Gemini's OpenAI-compatible layer) just set the three
+# DEEPSEEK_* env vars in .env - no code changes needed.
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
