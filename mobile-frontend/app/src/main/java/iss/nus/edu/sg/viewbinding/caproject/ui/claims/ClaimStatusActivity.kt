@@ -101,9 +101,16 @@ class ClaimStatusActivity : AuthenticatedActivity() {
             when (expense.status) {
                 ExpenseRecord.STATUS_APPROVED -> R.string.claim_decision_approved
                 ExpenseRecord.STATUS_REJECTED -> R.string.claim_decision_rejected
+                ExpenseRecord.STATUS_NEEDS_INFO -> R.string.claim_decision_needs_info
                 else -> R.string.claim_decision_pending
             },
         )
+        // Finance's note (approval opinion / request for more info) - shown
+        // whenever a reviewer wrote one.
+        val note = expense.approvalOpinion?.takeIf(String::isNotBlank)
+        binding.claimFinanceNote.isVisible = note != null
+        binding.claimFinanceNote.text = note
+            ?.let { getString(R.string.claim_finance_note_format, it) }
         bindReceipt(expense.receiptUrl)
         binding.addAnotherExpenseButton.isEnabled = expenseTrip != null
     }

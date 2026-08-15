@@ -19,6 +19,8 @@ data class ExpenseRecord(
     val notes: String,
     val tripTitle: String? = null,
     val tripDestination: String? = null,
+    val approvalOpinion: String? = null,
+    val approverName: String? = null,
 ) {
     val receiptName: String
         get() = receiptUrl?.substringAfterLast('/')?.takeIf(String::isNotBlank).orEmpty()
@@ -27,6 +29,7 @@ data class ExpenseRecord(
         const val STATUS_SUBMITTED = "SUBMITTED"
         const val STATUS_APPROVED = "APPROVED"
         const val STATUS_REJECTED = "REJECTED"
+        const val STATUS_NEEDS_INFO = "NEEDS_INFO"
     }
 }
 

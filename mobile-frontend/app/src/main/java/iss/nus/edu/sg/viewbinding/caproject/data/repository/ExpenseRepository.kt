@@ -127,6 +127,8 @@ class ExpenseRepository(
             notes = metadata.notes,
             tripTitle = tripTitle?.takeIf(String::isNotBlank),
             tripDestination = tripDestination?.takeIf(String::isNotBlank),
+            approvalOpinion = approvalOpinion?.takeIf(String::isNotBlank),
+            approverName = approverName?.takeIf(String::isNotBlank),
         )
     }
 
@@ -148,6 +150,7 @@ class ExpenseRepository(
             ExpenseRecord.STATUS_SUBMITTED,
             ExpenseRecord.STATUS_APPROVED,
             ExpenseRecord.STATUS_REJECTED,
+            ExpenseRecord.STATUS_NEEDS_INFO,
         )
 
         fun create(context: Context): ExpenseRepository {

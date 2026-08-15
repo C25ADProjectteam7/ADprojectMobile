@@ -59,6 +59,11 @@ internal object ExpenseUiFormatter {
                 view.setTextColor(context.getColor(R.color.travel_gold_dark))
                 view.setBackgroundResource(R.drawable.bg_status_gold)
             }
+            ExpenseRecord.STATUS_NEEDS_INFO -> {
+                view.setText(R.string.expense_status_needs_info)
+                view.setTextColor(context.getColor(R.color.travel_gold_dark))
+                view.setBackgroundResource(R.drawable.bg_status_gold)
+            }
             else -> {
                 view.setText(R.string.expense_status_unknown)
                 view.setTextColor(context.getColor(R.color.travel_text_muted))

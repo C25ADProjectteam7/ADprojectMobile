@@ -13,7 +13,3 @@
 .externalNativeBuild
 .cxx
 local.properties
-
-# Android module build output
-/app/build/
-.kotlin/

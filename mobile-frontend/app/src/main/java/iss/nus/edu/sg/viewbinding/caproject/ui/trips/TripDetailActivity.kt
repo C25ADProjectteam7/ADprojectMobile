@@ -88,7 +88,7 @@ class TripDetailActivity : AuthenticatedActivity() {
         showLoading()
         lifecycleScope.launch {
             when (val result = tripRepository.getTripDetail(tripId)) {
-                is ApiResult.Success -> showTrip(result.value.trip, result.value.days)
+                is ApiResult.Success -> showTrip(result.value.trip, result.value.days, result.value.approvalNote)
                 is ApiResult.Failure -> showState(
                     message = tripMessageFor(result),
                     canRetry = result.isTripRetryable(),
@@ -103,7 +103,11 @@ class TripDetailActivity : AuthenticatedActivity() {
         setContentVisible(false)
     }
 
-    private fun showTrip(loadedTrip: TripRequestData, loadedDays: List<DailyItinerary>) {
+    private fun showTrip(
+        loadedTrip: TripRequestData,
+        loadedDays: List<DailyItinerary>,
+        approvalNote: String? = null,
+    ) {
         trip = loadedTrip
         days = loadedDays
         selectedDayIndex = 0
@@ -119,6 +123,14 @@ class TripDetailActivity : AuthenticatedActivity() {
         binding.emptyItineraryMessage.isVisible = !hasItinerary
         binding.timelineContainer.isVisible = hasItinerary
         if (hasItinerary) bindSelectedDay()
+
+        // Manager rejection: show the reason (from the shared approvals
+        // table) and disable actions like a cancelled trip.
+        val isRejected = loadedTrip.remoteStatus.equals("REJECTED", ignoreCase = true)
+        binding.tripRejectionNote.isVisible = isRejected
+        binding.tripRejectionNote.text = approvalNote?.takeIf(String::isNotBlank)
+            ?.let { getString(R.string.trip_rejected_reason_format, it) }
+            ?: getString(R.string.trip_rejected_no_reason)
 
         val isCancelled = loadedTrip.remoteStatus.equals("CANCELLED", ignoreCase = true)
         binding.editTripButton.isEnabled = !isCancelled

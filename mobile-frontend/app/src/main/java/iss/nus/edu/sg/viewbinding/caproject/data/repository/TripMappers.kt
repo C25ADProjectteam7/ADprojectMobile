@@ -59,7 +59,7 @@ internal fun TripDetailResponse.toTripDetailData(
                 items = itinerary.items.map(ItineraryItemResponse::toItineraryItem),
             )
         }
-    return TripDetailData(trip = trip, days = days)
+    return TripDetailData(trip = trip, days = days, approvalNote = approvalNote)
 }
 
 internal fun TripRequestData.toNetworkRequest(): iss.nus.edu.sg.viewbinding.caproject.network.model.trip.TripRequest {

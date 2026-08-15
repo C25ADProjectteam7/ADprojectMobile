@@ -30,6 +30,7 @@ data class TripDetailResponse(
     val endDate: String,
     val budgetTotal: BigDecimal,
     val status: String,
+    val approvalNote: String? = null,
     val itineraries: List<ItineraryResponse>,
 )
 

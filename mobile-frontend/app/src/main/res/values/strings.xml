@@ -275,6 +275,8 @@
     <string name="booking_invalid_response">The server returned Booking data in an unexpected format.</string>
     <string name="booking_unknown_error">The Booking request could not be completed. Try again.</string>
     <string name="business_trip_format">%1$s Business Trip</string>
+    <string name="trip_rejected_reason_format">Rejected by manager: %1$s</string>
+    <string name="trip_rejected_no_reason">This trip was rejected by your manager.</string>
     <string name="trip_detail_subtitle_format">%1$s · %2$s</string>
     <string name="itinerary_ready">Itinerary ready</string>
     <string name="trip_day_default">DAY 1</string>
@@ -353,12 +355,15 @@
     <string name="expense_reference_format">Expense #%1$d · Trip #%2$d</string>
     <string name="expense_receipt_format">Receipt: %1$s</string>
     <string name="receipt_not_available">Receipt URL not available</string>
+    <string name="expense_status_needs_info">Needs info</string>
     <string name="expense_status_submitted">Submitted</string>
     <string name="expense_status_approved">Approved</string>
     <string name="expense_status_rejected">Rejected</string>
     <string name="expense_status_unknown">Unknown</string>
     <string name="claim_reference_backend_format">%1$s · Expense #%2$d</string>
     <string name="claim_category_format">Category: %1$s</string>
+    <string name="claim_finance_note_format">Finance note: %1$s</string>
+    <string name="claim_decision_needs_info">Finance requested more information - edit and resubmit.</string>
     <string name="claim_decision_pending">Waiting for a Finance Staff decision</string>
     <string name="claim_decision_approved">Approved by Finance Staff</string>
     <string name="claim_decision_rejected">Rejected by Finance Staff</string>
