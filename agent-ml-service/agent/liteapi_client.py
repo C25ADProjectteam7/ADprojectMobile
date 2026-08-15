@@ -116,6 +116,7 @@ async def search_hotels_by_coordinates(latitude: float, longitude: float, check_
             if rate_info is None or rate_info["price"] > max_price:
                 continue
             results.append({
+                "hotelId": hotel.get("id"),
                 "name": hotel.get("name"),
                 "city": hotel.get("city"),
                 "address": hotel.get("address"),

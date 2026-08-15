@@ -25,11 +25,13 @@ import iss.nus.edu.sg.viewbinding.caproject.network.ApiResult
 import iss.nus.edu.sg.viewbinding.caproject.ui.auth.AuthenticatedActivity
 import iss.nus.edu.sg.viewbinding.caproject.ui.main.MainActivity
 import iss.nus.edu.sg.viewbinding.caproject.validation.BudgetCalculator
+import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelFairPriceResponse
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
+import com.google.gson.JsonParser
 
 class ItineraryReviewActivity : AuthenticatedActivity() {
 
@@ -275,33 +277,43 @@ class ItineraryReviewActivity : AuthenticatedActivity() {
     private fun loadHotelPrediction(hotel: ItineraryItem) {
         binding.hotelPrediction.setText(R.string.ml_prediction_loading)
         binding.hotelPrediction.isClickable = false
+
+        val hotelId = hotelIdFromRawJson(hotel)
+
+        if (hotelId == null) {
+            binding.hotelPrediction.text = "Fair-price unavailable: missing hotel ID"
+            return
+        }
+
         lifecycleScope.launch {
             when (
-                val result = mlRepository.predictHotelPrice(
-                    city = tripRequest.city,
+                val result = mlRepository.predictHotelFairPrice(
+                    hotelId = hotelId,
+                    hotelName = hotel.title,
                     checkInDate = tripRequest.startDate,
-                    checkOutDate = tripRequest.endDate,
-                    hotelStarRating = hotelStarRating(hotel),
-                    roomType = hotelRoomType(hotel),
-                    numberOfGuests = 1,
-                    currency = "USD",
                 )
             ) {
-                is ApiResult.Success -> bindHotelPrediction(result.value)
+                is ApiResult.Success -> bindHotelFairPrice(result.value)
+
                 is ApiResult.Failure -> {
                     val message = mlMessageFor(result)
-                    binding.hotelPrediction.text = if (result.isMlRetryable()) {
-                        getString(R.string.ml_prediction_retry_format, message)
-                    } else {
-                        message
-                    }
-                    binding.hotelPrediction.isClickable = result.isMlRetryable()
-                    binding.hotelPrediction.setOnClickListener {
-                        if (result.isMlRetryable()) loadHotelPrediction(hotel)
-                    }
+                    binding.hotelPrediction.text = message
                 }
             }
         }
+    }
+
+    private fun hotelIdFromRawJson(hotel: ItineraryItem): String? {
+        val raw = hotel.rawJson?.takeIf { it.isNotBlank() } ?: return null
+
+        return runCatching {
+            JsonParser.parseString(raw)
+                .asJsonObject
+                .get("hotelId")
+                ?.asString
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
     private fun bindHotelPrediction(prediction: HotelPricePrediction) {
@@ -454,6 +466,31 @@ class ItineraryReviewActivity : AuthenticatedActivity() {
         setReviewVisible(true)
         setBookingActionsEnabled(false)
     }
+
+private fun bindHotelFairPrice(response: HotelFairPriceResponse) {
+    if (!response.predictionAvailable) {
+        binding.hotelPrediction.text =
+            "Fair-price unavailable (${response.reason ?: "UNKNOWN"})"
+        return
+    }
+
+    val current = response.currentComparablePrice
+    val low = response.fairPriceP25
+    val high = response.fairPriceP75
+    val level = response.priceLevel
+    val currency = response.currency ?: "INR"
+
+    if (current == null || low == null || high == null || level == null) {
+        binding.hotelPrediction.text = "Fair-price result unavailable"
+        return
+    }
+
+    val symbol = if (currency.equals("INR", ignoreCase = true)) "₹" else "$currency "
+
+    binding.hotelPrediction.text =
+        "$level · Current $symbol${current.toPlainString()} · " +
+                "Fair $symbol${low.toPlainString()}–$symbol${high.toPlainString()}"
+}
 
     private fun setBookingActionsEnabled(enabled: Boolean) {
         binding.requestChangesButton.isEnabled = enabled

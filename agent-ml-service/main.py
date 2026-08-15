@@ -10,8 +10,8 @@ Provides two capabilities to the Spring Boot backend:
 API endpoints:
 - POST /api/agent/generate-itinerary  → generate full itinerary
 - POST /api/agent/chat                → conversational trip modification
-- POST /api/ml/predict-price          → price trend prediction
-- POST /api/ml/allocate-budget        → budget allocation
+- POST /api/ml/predict-hotel-price    → hotel price prediction (V1)
+- POST /api/ml/v2/hotel-price         → India hotel fair-price verdict (V2)
 - GET  /health                        → health check
 """
 
@@ -20,6 +20,7 @@ import logging
 from fastapi import FastAPI
 from agent.routes import router as agent_router
 from agent.task_manager import start_cleanup_loop
+from ml.routes import router as ml_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,13 +51,12 @@ async def health_check():
     return {"status": "healthy", "service": "agent-ml-service"}
 
 app.include_router(agent_router)
+app.include_router(ml_router)
 
 @app.on_event("startup")
 async def startup_event():
     """Starts the background task-cleanup loop when the app starts."""
     asyncio.create_task(start_cleanup_loop())
-
-# TODO: register ml routes (from ml.routes import router as ml_router)
 
 if __name__ == "__main__":
     import uvicorn

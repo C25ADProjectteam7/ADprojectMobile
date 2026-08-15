@@ -40,9 +40,17 @@ __pycache__/
 venv/
 env/
 
+# ===== ML raw training data (too large / re-downloadable, not source) =====
+# NOTE: agent-ml-service/models/*.joblib is intentionally NOT ignored —
+# the FastAPI service loads it at runtime; it must ship with the repo.
+agent-ml-service/training/data/
+
 # ===== Docker =====
 docker-compose.override.yml
 
 # ===== Sensitive Data (DO NOT COMMIT) =====
 # API Keys, Passwords, Tokens — 这些文件绝不上传 GitHub
 # 在 CI/CD 中通过 GitHub Secrets 或环境变量注入
+
+# CatBoost training scratch output (not a deliverable)
+agent-ml-service/catboost_info/

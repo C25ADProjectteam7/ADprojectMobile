@@ -30,3 +30,24 @@ data class HotelPricePredictionResponse(
     val isMock: Boolean?,
     val message: String?,
 )
+
+data class HotelFairPriceRequest(
+    val hotelId: String,
+    val hotelName: String,
+    val bookingDate: String,
+    val checkInDate: String,
+)
+
+data class HotelFairPriceResponse(
+    val predictionAvailable: Boolean,
+    val reason: String?,
+    val predictionSource: String?,
+    val fairPriceP25: BigDecimal?,
+    val fairPriceP50: BigDecimal?,
+    val fairPriceP75: BigDecimal?,
+    val decisionLow: BigDecimal?,
+    val decisionHigh: BigDecimal?,
+    val currentComparablePrice: BigDecimal?,
+    val priceLevel: String?,
+    val currency: String?,
+)

@@ -38,4 +38,11 @@ public class MlController {
     public ResponseEntity<Map<String, Object>> predictHotelPrice(@RequestBody Map<String, Object> request) {
         return ResponseEntity.ok(mlClient.predictHotelPrice(request));
     }
+
+    @PostMapping("/v2/hotel-price")
+    public ResponseEntity<Map<String, Object>> predictHotelPriceV2(
+            @RequestBody Map<String, Object> request
+    ) {
+        return ResponseEntity.ok(mlClient.predictHotelPriceV2(request));
+    }
 }

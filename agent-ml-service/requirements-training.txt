@@ -1,0 +1,19 @@
+# ============================================================
+# Training / data-engineering dependencies
+# Install: pip install -r requirements-training.txt
+# ============================================================
+# These are NOT needed to serve the API. The FastAPI runtime loads a
+# pre-trained joblib pipeline and never reads parquet, so the production
+# image (Dockerfile -> requirements.txt) must stay free of them.
+#
+# Use this file to reproduce the V2 dataset build:
+#   pip install -r requirements-training.txt
+#   python training/v2/validate_cities.py    # downloads ~180 MB of raw CSVs
+#   python training/v2/build_dataset.py
+
+-r requirements.txt
+
+# Parquet engine for training/v2/build_dataset.py. pandas.to_parquet has no
+# built-in writer; without this the build fails with "Unable to find a usable
+# engine". ~131 MB installed, which is exactly why it is not a runtime dep.
+pyarrow==25.0.1

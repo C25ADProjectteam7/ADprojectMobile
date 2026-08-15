@@ -10,6 +10,8 @@ import iss.nus.edu.sg.viewbinding.caproject.network.MlApi
 import iss.nus.edu.sg.viewbinding.caproject.network.executeApiCall
 import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelPricePredictionRequest
 import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelPricePredictionResponse
+import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelFairPriceRequest
+import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelFairPriceResponse
 import java.time.LocalDate
 import java.util.Locale
 
@@ -45,6 +47,24 @@ class MlRepository(
                     onSuccess = { ApiResult.Success(it) },
                     onFailure = { ApiResult.Failure(ApiFailureKind.INVALID_RESPONSE) },
                 )
+        }
+    }
+
+    suspend fun predictHotelFairPrice(
+        hotelId: String,
+        hotelName: String,
+        checkInDate: LocalDate,
+        bookingDate: LocalDate = LocalDate.now(),
+    ): ApiResult<HotelFairPriceResponse> {
+        val request = HotelFairPriceRequest(
+            hotelId = hotelId.trim(),
+            hotelName = hotelName.trim(),
+            bookingDate = bookingDate.toString(),
+            checkInDate = checkInDate.toString(),
+        )
+
+        return executeApiCall(gson) {
+            mlApi.predictHotelFairPrice(request)
         }
     }
 
