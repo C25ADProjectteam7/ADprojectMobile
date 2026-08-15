@@ -1,8 +1,9 @@
 """ML API routes — FastAPI router for price prediction and budget allocation"""
 
 from fastapi import APIRouter
-from ml.schemas import HotelPriceRequest, HotelPriceResponse
+from ml.schemas import HotelPriceRequest, HotelPriceResponse, PriceAdviceRequest, PriceAdviceResponse
 from ml.price_predictor import HotelPricePredictor
+from ml.price_advisor import PriceAdvisor
 from ml.india_schemas import (
     IndiaHotelPriceRequest,
     IndiaHotelPriceByHotelIdRequest,
@@ -19,6 +20,8 @@ router = APIRouter(prefix="/api/ml", tags=["Machine Learning"])
 _predictor = HotelPricePredictor()
 # V2 India hybrid: B2 historical quantiles for known hotels, CatBoost for the rest.
 _india_predictor = IndiaHotelPricePredictor()
+# Price advisor: P25/P50/P75 quantile model + lead-time/month scan.
+_advisor = PriceAdvisor()
 
 
 @router.post("/predict-hotel-price", response_model=HotelPriceResponse)
@@ -99,6 +102,26 @@ async def predict_india_hotel_price_by_hotel_id(
         board_name=probe.get("boardName"),
         refundable_tag=probe.get("refundableTag"),
     )
+
+
+@router.post("/v2/price-advice", response_model=PriceAdviceResponse,
+             tags=["Machine Learning"])
+def price_advice(request: PriceAdviceRequest) -> PriceAdviceResponse:
+    """
+    Model-driven price RANGE + best-buy timing advice for a planned stay.
+
+    Answers: expected per-night range (P25/P50/P75), when to book (lead-time
+    scan -> cheapest point), and which month is cheapest. All from scanning
+    a quantile model trained on 72k real hotel bookings - no external
+    scraping. The model is city-agnostic (dataset has no city field); the
+    response message states this limitation.
+    """
+    return PriceAdviceResponse(**_advisor.advise(
+        check_in_date=request.check_in_date,
+        check_out_date=request.check_out_date,
+        number_of_guests=request.number_of_guests,
+        room_type=request.room_type,
+    ))
 
 
 # TODO: POST /api/ml/allocate-budget — intelligent budget allocation

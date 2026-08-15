@@ -62,3 +62,49 @@ class HotelPriceResponse(BaseModel):
         ...,
         examples=["This is a mock prediction. Do not use for real booking decisions."]
     )
+
+
+class PriceAdviceRequest(BaseModel):
+    """Price-advisor query: model-driven price RANGE + best-buy timing for a
+    planned stay. `city` is validated but does not influence the model (the
+    training dataset has no city field) - the response message says so."""
+
+    city: str = Field(..., min_length=1, examples=["Tokyo"])
+    check_in_date: date = Field(..., examples=["2026-08-22"])
+    check_out_date: date = Field(..., examples=["2026-08-24"])
+    room_type: Literal["single", "double", "twin", "suite"] = Field(default="double", examples=["double"])
+    number_of_guests: int = Field(default=2, ge=1, examples=[2])
+
+    @field_validator("city")
+    @classmethod
+    def strip_and_validate_city(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("city must not be blank")
+        return stripped
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> "PriceAdviceRequest":
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("check_out_date must be after check_in_date")
+        return self
+
+
+class PriceAdviceResponse(BaseModel):
+    prediction_available: bool = Field(..., examples=[True])
+    reason: str | None = Field(default=None, examples=[None])
+    currency: str | None = Field(default=None, examples=["USD"])
+    model_status: str | None = Field(default=None, examples=["trained"])
+    model_version: str | None = Field(default=None, examples=["lead-time-quantile-v1"])
+    price_range_per_night: dict[str, float] | None = Field(
+        default=None, examples=[{"p25": 85.0, "p50": 120.0, "p75": 160.0}]
+    )
+    total_price_range: dict[str, float] | None = Field(
+        default=None, examples=[{"p25": 170.0, "p50": 240.0, "p75": 320.0}]
+    )
+    buy_timing: dict | None = Field(
+        default=None, examples=[{"recommendedLeadDays": 30, "cheapestPricePerNight": 120.0}]
+    )
+    monthly_curve: list[dict] | None = Field(default=None, examples=[[{"month": 8, "p50PerNight": 120.0}]])
+    cheapest_month: dict | None = Field(default=None, examples=[{"month": 11, "p50PerNight": 98.0}])
+    message: str | None = Field(default=None)
