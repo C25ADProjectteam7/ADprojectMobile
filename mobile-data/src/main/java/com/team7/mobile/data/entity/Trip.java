@@ -171,7 +171,7 @@ public class Trip {
     }
 
     public enum TripStatus {
-        DRAFT, PLANNED, APPROVED, IN_PROGRESS, COMPLETED, CANCELLED
+        DRAFT, PLANNED, APPROVED, IN_PROGRESS, COMPLETED, CANCELLED, REJECTED
     }
 
     @PrePersist

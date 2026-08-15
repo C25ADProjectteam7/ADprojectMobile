@@ -57,6 +57,7 @@ class TripServiceModifyItineraryTest {
                 mock(ItineraryRepository.class),
                 itineraryItemRepository,
                 agentConversationRepository,
+                mock(com.team7.mobile.data.repository.MobileApprovalRepository.class),
                 currentUser,
                 agentOrchestrator,
                 mock(BookingService.class),

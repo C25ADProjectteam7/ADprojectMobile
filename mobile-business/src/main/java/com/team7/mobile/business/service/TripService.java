@@ -12,11 +12,13 @@ import com.team7.mobile.common.exception.ResourceNotFoundException;
 import com.team7.mobile.data.entity.AgentConversation;
 import com.team7.mobile.data.entity.Itinerary;
 import com.team7.mobile.data.entity.ItineraryItem;
+import com.team7.mobile.data.entity.MobileApproval;
 import com.team7.mobile.data.entity.Trip;
 import com.team7.mobile.data.entity.User;
 import com.team7.mobile.data.repository.AgentConversationRepository;
 import com.team7.mobile.data.repository.ItineraryItemRepository;
 import com.team7.mobile.data.repository.ItineraryRepository;
+import com.team7.mobile.data.repository.MobileApprovalRepository;
 import com.team7.mobile.data.repository.TripRepository;
 import com.team7.mobile.business.util.CurrentUser;
 import com.team7.mobile.business.agent.AgentOrchestrator;
@@ -43,6 +45,7 @@ public class TripService {
     private final ItineraryRepository itineraryRepository;
     private final ItineraryItemRepository itineraryItemRepository;
     private final AgentConversationRepository agentConversationRepository;
+    private final MobileApprovalRepository mobileApprovalRepository;
     private final CurrentUser currentUser;
     private final AgentOrchestrator agentOrchestrator;
     private final BookingService bookingService;
@@ -52,6 +55,7 @@ public class TripService {
                        ItineraryRepository itineraryRepository,
                        ItineraryItemRepository itineraryItemRepository,
                        AgentConversationRepository agentConversationRepository,
+                       MobileApprovalRepository mobileApprovalRepository,
                        CurrentUser currentUser,
                        AgentOrchestrator agentOrchestrator,
                        BookingService bookingService,
@@ -60,6 +64,7 @@ public class TripService {
         this.itineraryRepository = itineraryRepository;
         this.itineraryItemRepository = itineraryItemRepository;
         this.agentConversationRepository = agentConversationRepository;
+        this.mobileApprovalRepository = mobileApprovalRepository;
         this.currentUser = currentUser;
         this.agentOrchestrator = agentOrchestrator;
         this.bookingService = bookingService;
@@ -127,10 +132,15 @@ public class TripService {
         List<ItineraryDTO> itineraries = dayItineraries.stream()
                 .map(itinerary -> toItineraryDTO(itinerary, itemsByItineraryId.getOrDefault(itinerary.getId(), List.of())))
                 .collect(Collectors.toList());
+        // Approval note from the shared approvals table (written by the web
+        // Manager workflow in the same database) - shown on rejected trips.
+        String approvalNote = mobileApprovalRepository.findByMobileTripId(tripId)
+                .map(MobileApproval::getNote)
+                .orElse(null);
         return new TripDetailDTO(
                 trip.getId(), trip.getTitle(), trip.getDestination(),
                 trip.getStartDate(), trip.getEndDate(), trip.getBudgetTotal(),
-                trip.getStatus().name(), itineraries
+                trip.getStatus().name(), approvalNote, itineraries
         );
     }
 
