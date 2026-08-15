@@ -644,11 +644,14 @@ public class TripService {
     }
 
     private ItineraryDTO toItineraryDTO(Itinerary itinerary, List<ItineraryItem> itineraryItems) {
-        // Chronological order for the day - null start times go last so
-        // "Any time" activities never jump ahead of scheduled ones.
+        // Chronological order for the day. Items with no start time fall
+        // back to their end time (e.g. check-out hotels: 12:00 must sort
+        // before the return flight) - only fully untimed items go last.
         List<ItineraryItemDTO> items = itineraryItems.stream()
                 .sorted(java.util.Comparator.comparing(
-                        ItineraryItem::getStartTime,
+                        (ItineraryItem item) -> item.getStartTime() != null
+                                ? item.getStartTime()
+                                : item.getEndTime(),
                         java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
                 .map(this::toItemDTO)
                 .collect(Collectors.toList());
