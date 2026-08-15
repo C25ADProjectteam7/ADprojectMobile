@@ -27,6 +27,7 @@ import httpx
 import config
 
 PROBE_CURRENCY = "INR"
+PROBE_GUEST_NATIONALITY = "IN"
 PROBE_ADULTS = 2
 PROBE_ROOMS = 1
 PROBE_NIGHTS = 1
@@ -41,15 +42,35 @@ def next_day(date_str: str) -> str:
     return (datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=PROBE_NIGHTS)).strftime("%Y-%m-%d")
 
 
-async def fetch_hotel_country(hotel_id: str) -> Optional[str]:
-    """`/data/hotels` carries `country`; the search flow discards it, but the
-    India scope guard needs it, so the probe fetches it explicitly."""
+async def fetch_hotel_profile(hotel_id: str) -> dict:
+    """`/data/hotels` carries country/city/rating/reviewCount; the Agent's
+    search flow discards all of them. The India scope guard needs `country`
+    and the V2.1 unseen-hotel model needs `city`/`rating`/`reviewCount`, so
+    the probe fetches them explicitly.
+
+    NOTE: LiteAPI reports an absent rating (and an absent star class) as 0.0
+    or null. Values are passed through UNCHANGED - the frozen V3 feature
+    builder owns the missing-value semantics, so those rules live in exactly
+    one place and cannot drift between training and serving.
+    """
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.get(f"{config.LITEAPI_BASE_URL}/data/hotels",
                              headers=_headers(), params={"hotelIds": hotel_id})
         r.raise_for_status()
         data = r.json().get("data") or []
-    return (data[0].get("country") if data else None)
+    h = data[0] if data else {}
+    return {"country": h.get("country"), "city": h.get("city"),
+            "rating": h.get("rating"), "reviewCount": h.get("reviewCount"),
+            # V3 M2 hotel-class attributes. `stars` is the property CLASS and is
+            # a different variable from `rating`, the 0-10 guest score.
+            "stars": h.get("stars"), "chain": h.get("chain"),
+            "hotelTypeId": h.get("hotelTypeId"),
+            "facilityIds": h.get("facilityIds") or []}
+
+
+async def fetch_hotel_country(hotel_id: str) -> Optional[str]:
+    """Backwards-compatible shim over fetch_hotel_profile()."""
+    return (await fetch_hotel_profile(hotel_id)).get("country")
 
 
 def select_comparable_offer(rates_payload: dict, hotel_id: str) -> Optional[dict]:
@@ -107,7 +128,7 @@ async def get_fair_price_probe(hotel_id: str, hotel_name: str, check_in: str) ->
         "hotelIds": [hotel_id],
         "occupancies": [{"adults": PROBE_ADULTS}],   # 1 object == 1 room
         "currency": PROBE_CURRENCY,
-	"guestNationality": "IN",
+        "guestNationality": PROBE_GUEST_NATIONALITY,
         "checkin": check_in,
         "checkout": check_out,
         "roomMapping": False,
@@ -123,9 +144,9 @@ async def get_fair_price_probe(hotel_id: str, hotel_name: str, check_in: str) ->
     if offer is None:
         return {"available": False, "reason": "NO_COMPARABLE_RATE"}
 
-    country = None
+    profile = {}
     try:
-        country = await fetch_hotel_country(hotel_id)
+        profile = await fetch_hotel_profile(hotel_id)
     except Exception:
         pass
 
@@ -133,7 +154,14 @@ async def get_fair_price_probe(hotel_id: str, hotel_name: str, check_in: str) ->
         "available": True,
         "hotelId": hotel_id,
         "hotelName": hotel_name,
-        "country": country,
+        "country": profile.get("country"),
+        "city": profile.get("city"),
+        "rating": profile.get("rating"),
+        "reviewCount": profile.get("reviewCount"),
+        "stars": profile.get("stars"),
+        "chain": profile.get("chain"),
+        "hotelTypeId": profile.get("hotelTypeId"),
+        "facilityIds": profile.get("facilityIds") or [],
         "checkIn": check_in,
         "checkOut": check_out,
         "nights": PROBE_NIGHTS,

@@ -1,6 +1,6 @@
 """
-India hotel fair-price predictor (hybrid) — production inference
-================================================================
+India hotel fair-price predictor (hybrid V2.1) — production inference
+=====================================================================
 Answers exactly one question:
 
     "For the user's FIRST night, at 1 room / 2 adults / 1 night, is this
@@ -10,34 +10,45 @@ It does NOT judge a multi-night booking total, and it does NOT forecast
 future prices. `currentPrice` is never a model feature - it is compared to
 the prediction afterwards.
 
-Routing (frozen):
+Routing (unchanged from V1):
     unambiguous normalized hotel name AND >= 5 training offers -> HISTORICAL (B2)
-    otherwise                                                  -> ML (M1 CatBoost)
+    otherwise                                                  -> ML (M2D)
 
-Both paths return P25/P50/P75, which are then sorted (CatBoost quantile
-regression crossed on ~0.023% of validation rows) and widened into the
-business decision band before the verdict.
+Post-processing differs by path, deliberately:
+
+    HISTORICAL   sort -> x1.3707 -> band
+    ML (V3 M2)   sort -> CQR widen -> x1.0 -> band
+
+TWO THINGS THAT MUST NOT BE CONFLATED:
+
+1. Conformal calibration belongs to the ML model only. The HISTORICAL
+   quantiles are a hotel's own empirical history and were never part of the
+   conformal procedure, so widening them with the ML qhat would be unjustified.
+
+2. The temporal factor belongs to the HISTORICAL path only. B2 is built from
+   March 2020 PromptCloud prices and must be rebased. The V3 ML model was
+   trained on 2026 LiteAPI-native rates and is ALREADY on the current price
+   level - multiplying it by the CPI factor would double-count inflation.
 """
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Optional
 
-import math
-
 import joblib
+import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor
 
 from ml.india_serving_features import (
-    CATEGORICAL, FEATURES, breakfast_category_from_liteapi,
-    calendar_features, cancellation_category_from_liteapi, normalize_name,
-    room_category,
+    V3_CATEGORICAL, V3_FEATURES, calendar_features, normalize_name,
+    room_category, serving_city, v3_features,
 )
 
 MODELS = Path(__file__).resolve().parent.parent / "models"
-CBM_PATH = MODELS / "hotel_price_india_hybrid_v1.cbm"
-META_PATH = MODELS / "hotel_price_india_hybrid_v1.joblib"
+CBM_PATH = MODELS / "hotel_price_india_v3_m2.cbm"
+META_PATH = MODELS / "hotel_price_india_v3_m2.joblib"
 
 SUPPORTED_MARKET = "IN"
 # Training lead-time support is strictly 0..15 days (crawl 2020-03-01..03-24 vs
@@ -47,6 +58,8 @@ MIN_LEAD_DAYS = 0
 MAX_LEAD_DAYS = 15
 SUPPORTED_CURRENCY = "INR"
 COMPARISON_BASIS = "PER_NIGHT_1ROOM_2ADULTS"
+PRICE_BASIS_HISTORICAL = "TEMPORALLY_ADJUSTED_2026_07_REFERENCE"
+PRICE_BASIS_ML = "LITEAPI_NATIVE_2026_SNAPSHOT"
 _INDIA_ALIASES = {"IN", "IND", "INDIA"}
 
 
@@ -56,7 +69,7 @@ def is_india(country) -> bool:
 
 
 class IndiaHotelPricePredictor:
-    """Loads the frozen artifact once and serves fair-price verdicts."""
+    """Loads the frozen V2.1 artifact once and serves fair-price verdicts."""
 
     def __init__(self) -> None:
         self._model: Optional[CatBoostRegressor] = None
@@ -75,6 +88,12 @@ class IndiaHotelPricePredictor:
         self._hotel = self._art["b2_hotel"].set_index("hotel_key")
         self._known = set(self._art["known_hotel_keys"])
         self._ambiguous = set(self._art["ambiguous_hotel_keys"])
+        self._city_aliases = self._art["city_aliases"]
+        m = self._art["metadata"]
+        self._qhat = m["calibration"]["qhat"]
+        self._factor_historical = m["temporalAdjustment"]["historicalPathFactor"]
+        self._factor_ml = m["temporalAdjustment"]["mlPathFactor"]
+        self._tolerance = m["businessTolerance"]
         return True
 
     @property
@@ -90,6 +109,9 @@ class IndiaHotelPricePredictor:
                 market: str, booking_date, check_in_date,
                 room_name: str = None, board_type: str = None,
                 board_name: str = None, refundable_tag: str = None,
+                city: str = None, rating: float = None, review_count: int = None,
+                stars: float = None, chain: str = None, hotel_type_id: int = None,
+                facility_ids: list = None,
                 comparison_offer_selection: str = "CHEAPEST_COMPARABLE_ONE_NIGHT") -> dict:
         if not self._ensure():
             return _unavailable("MODEL_ERROR")
@@ -117,41 +139,54 @@ class IndiaHotelPricePredictor:
         if not hotel_key:
             return _unavailable("INVALID_INPUT")
 
-        row = {
-            "hotel_key": hotel_key,
-            "room_category": room_category(room_name),
-            "breakfast_category": breakfast_category_from_liteapi(board_type, board_name),
-            "cancellation_category": cancellation_category_from_liteapi(refundable_tag),
-            **cal,
-        }
-
+        room_cat = room_category(room_name)
         matched = hotel_key in self._known and hotel_key not in self._ambiguous
-        if matched:
-            q = self._lookup_b2(hotel_key, row["room_category"])
+        q = self._lookup_b2(hotel_key, room_cat) if matched else None
+
+        if q is not None:
             source = "HISTORICAL"
+            price_basis = PRICE_BASIS_HISTORICAL
+            p25, p50, p75 = sorted(float(x) for x in q)
+            # NO conformal adjustment: these are the hotel's own empirical
+            # quantiles and were not part of the ML calibration procedure.
+            # 2020-basis quantiles DO need the CPI rebasing.
+            f = self._factor_historical
         else:
-            q = None
-        if q is None:
-            q = self._predict_ml(row)
-            source = "ML"
-            matched = False
+            source, matched = "ML", False
+            price_basis = PRICE_BASIS_ML
+            row = v3_features(
+                market=serving_city(city, self._city_aliases),
+                stars=stars, rating=rating, review_count=review_count,
+                chain=chain, hotel_type_id=hotel_type_id, facility_ids=facility_ids,
+                room_name=room_name, board_type=board_type, board_name=board_name,
+                refundable_tag=refundable_tag,
+                lead_time_days=cal["lead_time_days"],
+            )
+            p25, p50, p75 = sorted(float(x) for x in self._predict_ml(row))
+            p25, p75 = self._conformalize(p25, p50, p75)      # ML PATH ONLY
+            # V3 was trained on 2026 LiteAPI-native rates - already current.
+            f = self._factor_ml
 
-        p25, p50, p75 = sorted(float(x) for x in q)      # deterministic sort
-        tol = self.metadata.get("businessTolerance", 0.15)
-        low = min(p25, (1 - tol) * p50)
-        high = max(p75, (1 + tol) * p50)
+        p25, p50, p75 = p25 * f, p50 * f, p75 * f
 
+        tol = self._tolerance
+        # Round the band BEFORE deciding, so the verdict is always consistent
+        # with the numbers we publish - a caller echoing back decisionLow must
+        # get FAIR, not CHEAP off a hidden extra decimal.
+        p25, p50, p75 = round(p25, 2), round(p50, 2), round(p75, 2)
+        low = round(min(p25, (1 - tol) * p50), 2)
+        high = round(max(p75, (1 + tol) * p50), 2)
         level = "CHEAP" if price < low else ("EXPENSIVE" if price > high else "FAIR")
 
         return {
             "predictionAvailable": True,
             "predictionSource": source,
             "modelVersion": self.model_version,
-            "fairPriceP25": round(p25, 2),
-            "fairPriceP50": round(p50, 2),
-            "fairPriceP75": round(p75, 2),
-            "decisionLow": round(low, 2),
-            "decisionHigh": round(high, 2),
+            "fairPriceP25": p25,
+            "fairPriceP50": p50,
+            "fairPriceP75": p75,
+            "decisionLow": low,
+            "decisionHigh": high,
             "currentComparablePrice": round(price, 2),
             "priceLevel": level,
             "currency": SUPPORTED_CURRENCY,
@@ -159,6 +194,8 @@ class IndiaHotelPricePredictor:
             "comparisonBasis": COMPARISON_BASIS,
             "comparisonOfferSelection": comparison_offer_selection,
             "hotelMatchedHistorically": matched,
+            "priceBasis": price_basis,
+            "temporalAdjustmentFactor": f,
         }
 
     # -------------------------------------------------------------- routing
@@ -176,10 +213,16 @@ class IndiaHotelPricePredictor:
             return None
 
     def _predict_ml(self, row: dict):
-        df = pd.DataFrame([row])[FEATURES]
-        for c in CATEGORICAL:
+        df = pd.DataFrame([row])[V3_FEATURES]          # frozen order is contractual
+        for c in V3_CATEGORICAL:
             df[c] = df[c].astype(str)
         return tuple(self._model.predict(df)[0])
+
+    def _conformalize(self, p25: float, p50: float, p75: float):
+        """Frozen normalized CQR (qhat from the CAL hotels): widen the
+        endpoints only. P50 is untouched by construction."""
+        width = p75 - p25
+        return p25 - self._qhat * width, p75 + self._qhat * width
 
 
 def _unavailable(reason: str) -> dict:

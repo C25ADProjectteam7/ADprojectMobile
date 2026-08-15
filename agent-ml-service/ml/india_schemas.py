@@ -57,6 +57,16 @@ class IndiaHotelPriceResponse(BaseModel):
     comparisonBasis: str
     comparisonOfferSelection: str
     hotelMatchedHistorically: bool
+    # --- V2.1 audit fields. Additive only: existing consumers ignore them. ---
+    priceBasis: str = Field("LITEAPI_NATIVE_2026_SNAPSHOT",
+                            description="TEMPORALLY_ADJUSTED_2026_07_REFERENCE on the "
+                                        "HISTORICAL path (2020 data rebased); "
+                                        "LITEAPI_NATIVE_2026_SNAPSHOT on the ML path")
+    temporalAdjustmentFactor: float = Field(
+        1.0, description="1.3707 on the HISTORICAL path (MoSPI hotel-lodging CPI, "
+                         "2020 -> 2026). 1.0 on the ML path: V3 was trained on "
+                         "2026 LiteAPI-native rates and needs no rebasing. The "
+                         "current quote is never adjusted on either path.")
 
 
 class IndiaHotelPriceUnavailable(BaseModel):
