@@ -118,7 +118,12 @@ public class ExpenseService {
     /**
      * Approve a claim (web admin / approver). Writes the approval opinion.
      * Only claims in SUBMITTED or NEEDS_INFO state can be approved (state machine).
+     * @Transactional: toDTO() reads the lazy trip association after save -
+     * findById's @EntityGraph override does not apply (Spring Data only
+     * honours it on derived queries), so without a session the proxy throws
+     * LazyInitializationException (observed live on finance review).
      */
+    @org.springframework.transaction.annotation.Transactional
     public ExpenseDTO approveExpense(Long expenseId, String opinion) {
         Expense expense = findApprovableExpense(expenseId);
         expense.setStatus(Expense.ExpenseStatus.APPROVED);
@@ -133,6 +138,7 @@ public class ExpenseService {
      * Reject a claim (web admin / approver). Writes the rejection reason.
      * Only claims in SUBMITTED or NEEDS_INFO state can be rejected (state machine).
      */
+    @org.springframework.transaction.annotation.Transactional
     public ExpenseDTO rejectExpense(Long expenseId, String opinion) {
         Expense expense = findApprovableExpense(expenseId);
         expense.setStatus(Expense.ExpenseStatus.REJECTED);
@@ -147,6 +153,7 @@ public class ExpenseService {
      * Mark a claim as needing more information (approver asks employee to supplement).
      * Only claims in SUBMITTED state can be sent back (state machine).
      */
+    @org.springframework.transaction.annotation.Transactional
     public ExpenseDTO requestInfo(Long expenseId, String opinion) {
         Expense expense = findApprovableExpense(expenseId);
         expense.setStatus(Expense.ExpenseStatus.NEEDS_INFO);
