@@ -65,9 +65,9 @@ class PriceAdvisor:
 
     # ------------------------------------------------------------- core
     def advise(self, *, check_in_date, check_out_date, number_of_guests: int,
-               room_type: str = "double") -> dict:
+               room_type: str = "double", booking_date=None, current_price=None) -> dict:
         if not self._ensure():
-            return {"predictionAvailable": False, "reason": "MODEL_ERROR"}
+            return {"prediction_available": False, "reason": "MODEL_ERROR"}
 
         try:
             check_in = date.fromisoformat(str(check_in_date))
@@ -75,9 +75,18 @@ class PriceAdvisor:
             nights = (check_out - check_in).days
             guests = int(number_of_guests)
             if nights <= 0 or guests <= 0:
-                return {"predictionAvailable": False, "reason": "INVALID_INPUT"}
+                return {"prediction_available": False, "reason": "INVALID_INPUT"}
         except (ValueError, TypeError):
-            return {"predictionAvailable": False, "reason": "INVALID_INPUT"}
+            return {"prediction_available": False, "reason": "INVALID_INPUT"}
+
+        # The hotel's CURRENT rate selects the price band (economy/mid/
+        # premium) so the market range compared against is the band's own -
+        # a $360 Manhattan hotel must not be judged against an $88 average.
+        try:
+            current = float(current_price) if current_price is not None else None
+        except (ValueError, TypeError):
+            current = None
+        tier = self._tier_of(current)
 
         room_code = room_type.lower() if room_type else "double"
         # Dataset room codes are single letters; double is by far the most
@@ -91,6 +100,7 @@ class PriceAdvisor:
             "nights": nights,
             "number_of_guests": guests,
             "arrival_month_num": check_in.month,
+            "adr_tier": tier,
             **context,
         }
 
@@ -125,25 +135,48 @@ class PriceAdvisor:
         best_month_idx = min(range(12), key=lambda i: month_curve[i][1])
         cheapest_month = best_month_idx + 1
 
+        # 3) "Is NOW a good time to book?" - compare the price at the
+        #    CURRENT lead time (today -> check-in) against the curve's best
+        #    point. Booking after the recommended window is "too late";
+        #    booking within it is a good time.
+        current_timing = self._current_timing(
+            base, check_in, booking_date, lead_curve, p50, saving_pct,
+        )
+
+        # 4) Band-relative market range: when the current rate sits far above
+        #    the band's median (beyond what the dataset contains), scale the
+        #    band range around the current rate so the comparison is with
+        #    "hotels at THIS price level", not the band average.
+        scale = None
+        if current is not None and current > 0 and p50 > 0:
+            ratio = current / p50
+            if ratio >= 1.5:
+                scale = ratio
+        if scale:
+            p25, p50, p75 = p25 * scale, p50 * scale, p75 * scale
+            scale_applied = True
+        else:
+            scale_applied = False
+
         return {
-            "predictionAvailable": True,
+            "prediction_available": True,
             "currency": "USD",
-            "modelStatus": self.metadata.get("modelStatus", "trained"),
-            "modelVersion": self.metadata.get("modelVersion", "unavailable"),
-            "priceRangePerNight": {
+            "model_status": self.metadata.get("modelStatus", "trained"),
+            "model_version": self.metadata.get("modelVersion", "unavailable"),
+            "price_range_per_night": {
                 "p25": round(p25, 2),
                 "p50": round(p50, 2),
                 "p75": round(p75, 2),
             },
-            "totalPriceRange": {
+            "total_price_range": {
                 "p25": round(p25 * nights, 2),
                 "p50": round(p50 * nights, 2),
                 "p75": round(p75 * nights, 2),
             },
-            "buyTiming": {
-                "recommendedLeadDays": best_lead,
-                "cheapestPricePerNight": round(p50, 2),
-                "savingVsLastMinutePercent": saving_pct,
+            "buy_timing": {
+                "recommended_lead_days": best_lead,
+                "cheapest_price_per_night": round(p50, 2),
+                "saving_vs_last_minute_percent": saving_pct,
                 "message": (
                     f"Booking as early as possible is the cheapest strategy "
                     f"(the model's lead-time curve keeps falling past {LEAD_TIME_GRID[-1]} days; "
@@ -155,17 +188,22 @@ class PriceAdvisor:
                     f"{saving_pct}% vs a last-minute booking)."
                 ),
             },
-            "monthlyCurve": [
+            "monthly_curve": [
                 {
                     "month": m,
-                    "p50PerNight": round(month_curve[m - 1][1], 2),
+                    "p50_per_night": round(month_curve[m - 1][1], 2),
                 }
                 for m in range(1, 13)
             ],
-            "cheapestMonth": {
+            "cheapest_month": {
                 "month": cheapest_month,
-                "p50PerNight": round(month_curve[best_month_idx][1], 2),
+                "p50_per_night": round(month_curve[best_month_idx][1], 2),
             },
+            "current_timing": current_timing,
+            "price_tier": tier,
+            "tier_range_note": (
+                None if current is None else self._tier_note(current, tier, p25, p75)
+            ),
             "message": (
                 "Model-driven advice from a quantile model trained on 72k real "
                 "hotel bookings (Hotel Booking Demand). The dataset has no city "
@@ -176,6 +214,100 @@ class PriceAdvisor:
         }
 
     # ------------------------------------------------------------- internals
+    def _tier_of(self, price: float | None) -> str:
+        """Price band for a nightly rate, matching the training feature."""
+        meta = self.metadata
+        labels = meta.get("tierLabels", ["economy", "mid", "premium"])
+        edges = meta.get("tierEdges", [0.0, 100.0, 200.0, float("inf")])
+        if price is None:
+            return "mid"
+        for i, edge in enumerate(edges[:-1]):
+            if price < edges[i + 1]:
+                return labels[i]
+        return labels[-1]
+
+    def _tier_note(self, current: float, tier: str, p25: float, p75: float) -> str:
+        """Human note explaining which band the comparison used."""
+        return (
+            f"Compared against the {tier} band market range "
+            f"({round(p25, 2)}-{round(p75, 2)} USD/night), selected from the "
+            f"hotel's current rate."
+        )
+
+    def _current_timing(self, base: dict, check_in, booking_date,
+                        lead_curve: list, best_p50: float, saving_pct: float) -> dict:
+        """Verdict on whether booking RIGHT NOW is a good time.
+
+        current lead days = check_in - booking_date (clamped to the grid).
+        The price at that lead time is compared to the curve's best point:
+          - within 5%  of the best  -> GOOD_TIME  ("now is a good time")
+          - within 15% above best   -> OK         ("acceptable, earlier is better")
+          - more than 15% above     -> TOO_LATE   ("you're late - prices have climbed")
+        When booking_date is missing, there is nothing to judge - the field is
+        simply absent and the caller falls back to the buyTiming advice."""
+        if booking_date is None:
+            return None
+        try:
+            book = date.fromisoformat(str(booking_date))
+        except (ValueError, TypeError):
+            return None
+        current_lead = (check_in - book).days
+        if current_lead < 0:
+            return {
+                "current_lead_days": None,
+                "verdict": "INVALID_INPUT",
+                "message": "Booking date is after check-in - please correct the dates.",
+            }
+
+        # Price at the current lead time: interpolate on the scanned curve.
+        if current_lead <= LEAD_TIME_GRID[0]:
+            cur_p50 = lead_curve[0][1]
+        elif current_lead >= LEAD_TIME_GRID[-1]:
+            cur_p50 = lead_curve[-1][1]
+        else:
+            # linear interpolation between the two bracketing grid points
+            for i in range(len(LEAD_TIME_GRID) - 1):
+                lo, hi = LEAD_TIME_GRID[i], LEAD_TIME_GRID[i + 1]
+                if lo <= current_lead <= hi:
+                    frac = (current_lead - lo) / (hi - lo)
+                    cur_p50 = lead_curve[i][1] * (1 - frac) + lead_curve[i + 1][1] * frac
+                    break
+            else:
+                cur_p50 = lead_curve[-1][1]
+
+        premium = 0.0
+        if best_p50 > 0:
+            premium = (cur_p50 - best_p50) / best_p50 * 100  # % above the best point
+        if premium <= 5.0:
+            verdict = "GOOD_TIME"
+            message = (
+                f"Now is a good time to book ({current_lead} days ahead) - the "
+                f"price is essentially at the curve's best point."
+            )
+        elif premium <= 15.0:
+            verdict = "OK"
+            message = (
+                f"Booking now ({current_lead} days ahead) is {premium:.1f}% above "
+                f"the curve's best price - acceptable, but booking earlier would "
+                f"save more."
+            )
+        else:
+            verdict = "TOO_LATE"
+            message = (
+                f"You're {current_lead} days out and prices have climbed "
+                f"{premium:.1f}% above the curve's best point - book now or accept "
+                f"the higher price."
+            )
+
+        return {
+            "current_lead_days": current_lead,
+            "current_price_per_night": round(cur_p50, 2),
+            "best_price_per_night": round(best_p50, 2),
+            "premium_vs_best_percent": round(premium, 1),
+            "verdict": verdict,
+            "message": message,
+        }
+
     def _predict_quantiles(self, rows: pd.DataFrame) -> list[tuple[float, float, float]]:
         """Predict (p25, p50, p75) for each row, sorted ascending."""
         for c in self._cat:
@@ -189,4 +321,4 @@ class PriceAdvisor:
 
 
 def _unavailable(reason: str) -> dict:
-    return {"predictionAvailable": False, "reason": reason}
+    return {"prediction_available": False, "reason": reason}

@@ -121,6 +121,8 @@ def price_advice(request: PriceAdviceRequest) -> PriceAdviceResponse:
         check_out_date=request.check_out_date,
         number_of_guests=request.number_of_guests,
         room_type=request.room_type,
+        booking_date=request.booking_date,
+        current_price=request.current_price,
     ))
 
 

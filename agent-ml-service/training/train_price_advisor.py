@@ -34,8 +34,16 @@ MONTH_MAP = {
 }
 
 NUMERIC_FEATURES = ["lead_time", "nights", "number_of_guests", "arrival_month_num"]
-CATEGORICAL_FEATURES = ["hotel", "reserved_room_type", "market_segment", "deposit_type", "customer_type"]
+CATEGORICAL_FEATURES = ["hotel", "reserved_room_type", "market_segment", "deposit_type", "customer_type", "adr_tier"]
 TARGET = "adr"
+
+# Price bands for the adr_tier feature: hotels within the same band share
+# pricing patterns (lead-time curves, seasonality). At serve time the band
+# comes from the hotel's CURRENT rate, so advice compares against the same
+# band's market range instead of a city-wide average (a $360 Manhattan hotel
+# must not be judged against an $88 average).
+TIER_EDGES = [0.0, 100.0, 200.0, float("inf")]
+TIER_LABELS = ["economy", "mid", "premium"]
 
 QUANTILES = [0.25, 0.5, 0.75]
 
@@ -60,6 +68,7 @@ def load_and_clean(path: str) -> pd.DataFrame:
     df = df[df["adr"] > 0]
     cap = df["adr"].quantile(0.99)
     df = df[df["adr"] <= cap]
+    df["adr_tier"] = pd.cut(df["adr"], bins=TIER_EDGES, labels=TIER_LABELS)
     df = df.dropna(subset=NUMERIC_FEATURES + CATEGORICAL_FEATURES + [TARGET])
     return df
 
@@ -133,12 +142,15 @@ def main():
         "quantiles": QUANTILES,
         "target": TARGET,
         "metadata": {
-            "modelVersion": "lead-time-quantile-v1",
+            "modelVersion": "lead-time-quantile-v2",
             "modelStatus": "trained",
             "trainedRows": len(train),
             "dataset": "Hotel Booking Demand (Antonio, Almeida & Nunes, 2019)",
+            "tierEdges": TIER_EDGES,
+            "tierLabels": TIER_LABELS,
             "note": "city / hotel_star_rating are NOT features (dataset has none); "
-                    "advice is driven by lead time, month, stay length and guests.",
+                    "advice is driven by lead time, month, stay length, guests and "
+                    "the hotel's price band (economy/mid/premium).",
         },
     }, MODEL_ARTIFACT_PATH)
     size_mb = MODEL_ARTIFACT_PATH.stat().st_size / 1024 / 1024

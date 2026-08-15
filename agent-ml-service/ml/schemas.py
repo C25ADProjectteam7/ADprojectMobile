@@ -74,6 +74,12 @@ class PriceAdviceRequest(BaseModel):
     check_out_date: date = Field(..., examples=["2026-08-24"])
     room_type: Literal["single", "double", "twin", "suite"] = Field(default="double", examples=["double"])
     number_of_guests: int = Field(default=2, ge=1, examples=[2])
+    # When supplied, the response adds currentTiming: is NOW a good time to
+    # book (current lead time vs the curve's best point).
+    booking_date: date | None = Field(default=None, examples=["2026-08-15"])
+    # The hotel's current nightly rate (USD) - selects the price band used
+    # for the market-range comparison (economy/mid/premium).
+    current_price: float | None = Field(default=None, gt=0, examples=[358.99])
 
     @field_validator("city")
     @classmethod
@@ -87,6 +93,8 @@ class PriceAdviceRequest(BaseModel):
     def validate_dates(self) -> "PriceAdviceRequest":
         if self.check_out_date <= self.check_in_date:
             raise ValueError("check_out_date must be after check_in_date")
+        if self.booking_date is not None and self.booking_date > self.check_in_date:
+            raise ValueError("booking_date cannot be later than check_in_date")
         return self
 
 
@@ -107,4 +115,8 @@ class PriceAdviceResponse(BaseModel):
     )
     monthly_curve: list[dict] | None = Field(default=None, examples=[[{"month": 8, "p50PerNight": 120.0}]])
     cheapest_month: dict | None = Field(default=None, examples=[{"month": 11, "p50PerNight": 98.0}])
+    current_timing: dict | None = Field(
+        default=None,
+        examples=[{"currentLeadDays": 7, "verdict": "GOOD_TIME", "message": "..."}],
+    )
     message: str | None = Field(default=None)
