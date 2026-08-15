@@ -19,7 +19,7 @@ services:
       - mysql-data:/var/lib/mysql                        # persist data
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "127.0.0.1:3307:3306"                             # host:3306→OS, container:3306
+      - "172.17.0.1:3307:3306"                           # docker0 bridge, container:3306 (reachable by the web-backend container via host.docker.internal)
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost",
              "-u", "mobile_user", "-p${MYSQL_PASSWORD:-Mobile@2026!}"]
