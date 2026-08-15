@@ -45,4 +45,22 @@ public class MlController {
     ) {
         return ResponseEntity.ok(mlClient.predictHotelPriceV2(request));
     }
+
+    /**
+     * Price-advisor: expected price range + best-buy timing for a planned
+     * stay. Example body:
+     *   {
+     *     "city": "Tokyo",
+     *     "checkInDate": "2026-08-22",
+     *     "checkOutDate": "2026-08-24",
+     *     "roomType": "double",
+     *     "numberOfGuests": 2
+     *   }
+     * Response includes priceRangePerNight (p25/p50/p75), buyTiming
+     * (recommendedLeadDays, saving percent), monthlyCurve and cheapestMonth.
+     */
+    @PostMapping("/v2/price-advice")
+    public ResponseEntity<Map<String, Object>> getPriceAdvice(@RequestBody Map<String, Object> request) {
+        return ResponseEntity.ok(mlClient.getPriceAdvice(request));
+    }
 }

@@ -80,6 +80,29 @@ public class MlClient {
         }
     }
 
+    /**
+     * Price-advisor query: expected price RANGE + best-buy timing for a
+     * planned stay. Request fields (per ml/schemas.py PriceAdviceRequest):
+     *   city, checkInDate, checkOutDate, roomType, numberOfGuests
+     * Response: priceRangePerNight/totalPriceRange (p25/p50/p75),
+     *   buyTiming {recommendedLeadDays, cheapestPricePerNight,
+     *   savingVsLastMinutePercent, message}, monthlyCurve, cheapestMonth,
+     *   predictionAvailable, reason, modelStatus/Version, message
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getPriceAdvice(Map<String, Object> request) {
+        Map<String, Object> snakeCase = new LinkedHashMap<>();
+        request.forEach((k, v) -> snakeCase.put(toSnakeCase(k), v));
+
+        String url = mlBaseUrl + "/api/ml/v2/price-advice";
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, jsonHeaders(snakeCase), Map.class);
+            return (Map<String, Object>) response.getBody();
+        } catch (RestClientException e) {
+            throw new ExternalApiException("MLService", url + " — " + e.getMessage(), e);
+        }
+    }
+
     /** camelCase → snake_case: checkInDate → check_in_date */
     private String toSnakeCase(String camel) {
         StringBuilder sb = new StringBuilder();
