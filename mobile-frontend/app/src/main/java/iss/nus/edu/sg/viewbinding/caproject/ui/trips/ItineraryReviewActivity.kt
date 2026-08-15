@@ -18,6 +18,7 @@ import iss.nus.edu.sg.viewbinding.caproject.data.repository.TripRepository
 import iss.nus.edu.sg.viewbinding.caproject.databinding.ActivityItineraryReviewBinding
 import iss.nus.edu.sg.viewbinding.caproject.model.ItineraryItem
 import iss.nus.edu.sg.viewbinding.caproject.model.HotelPricePrediction
+import iss.nus.edu.sg.viewbinding.caproject.model.PriceAdvice
 import iss.nus.edu.sg.viewbinding.caproject.model.TripDetailData
 import iss.nus.edu.sg.viewbinding.caproject.model.TripRequestData
 import iss.nus.edu.sg.viewbinding.caproject.network.ApiFailureKind
@@ -25,13 +26,11 @@ import iss.nus.edu.sg.viewbinding.caproject.network.ApiResult
 import iss.nus.edu.sg.viewbinding.caproject.ui.auth.AuthenticatedActivity
 import iss.nus.edu.sg.viewbinding.caproject.ui.main.MainActivity
 import iss.nus.edu.sg.viewbinding.caproject.validation.BudgetCalculator
-import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelFairPriceResponse
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
-import com.google.gson.JsonParser
 
 class ItineraryReviewActivity : AuthenticatedActivity() {
 
@@ -277,43 +276,148 @@ class ItineraryReviewActivity : AuthenticatedActivity() {
     private fun loadHotelPrediction(hotel: ItineraryItem) {
         binding.hotelPrediction.setText(R.string.ml_prediction_loading)
         binding.hotelPrediction.isClickable = false
-
-        val hotelId = hotelIdFromRawJson(hotel)
-
-        if (hotelId == null) {
-            binding.hotelPrediction.text = "Fair-price unavailable: missing hotel ID"
-            return
-        }
-
         lifecycleScope.launch {
+            // Price-advice (range + best-buy timing) is the primary ML
+            // widget; fall back to the point prediction if it fails.
             when (
-                val result = mlRepository.predictHotelFairPrice(
-                    hotelId = hotelId,
-                    hotelName = hotel.title,
+                val advice = mlRepository.getPriceAdvice(
+                    city = tripRequest.city,
                     checkInDate = tripRequest.startDate,
+                    checkOutDate = tripRequest.endDate,
+                    roomType = hotelRoomType(hotel),
+                    numberOfGuests = 1,
+                    currentPrice = hotel.price,
                 )
             ) {
-                is ApiResult.Success -> bindHotelFairPrice(result.value)
-
-                is ApiResult.Failure -> {
-                    val message = mlMessageFor(result)
-                    binding.hotelPrediction.text = message
+                is ApiResult.Success -> bindPriceAdvice(advice.value, hotel.price)
+                is ApiResult.Failure -> when (
+                    val result = mlRepository.predictHotelPrice(
+                        city = tripRequest.city,
+                        checkInDate = tripRequest.startDate,
+                        checkOutDate = tripRequest.endDate,
+                        hotelStarRating = hotelStarRating(hotel),
+                        roomType = hotelRoomType(hotel),
+                        numberOfGuests = 1,
+                        currency = "USD",
+                    )
+                ) {
+                    is ApiResult.Success -> bindHotelPrediction(result.value)
+                    is ApiResult.Failure -> {
+                        val message = mlMessageFor(result)
+                        binding.hotelPrediction.text = if (result.isMlRetryable()) {
+                            getString(R.string.ml_prediction_retry_format, message)
+                        } else {
+                            message
+                        }
+                        binding.hotelPrediction.isClickable = result.isMlRetryable()
+                        binding.hotelPrediction.setOnClickListener {
+                            if (result.isMlRetryable()) loadHotelPrediction(hotel)
+                        }
+                    }
                 }
             }
         }
     }
 
-    private fun hotelIdFromRawJson(hotel: ItineraryItem): String? {
-        val raw = hotel.rawJson?.takeIf { it.isNotBlank() } ?: return null
-
-        return runCatching {
-            JsonParser.parseString(raw)
-                .asJsonObject
-                .get("hotelId")
-                ?.asString
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-        }.getOrNull()
+    private fun bindPriceAdvice(advice: PriceAdvice, currentPrice: BigDecimal?) {
+        val range = advice.priceRangePerNight
+        val buy = advice.buyTiming
+        // "Is NOW a good time to book?" is the headline - colour-coded by verdict.
+        val timing = advice.currentTiming
+        val verdictLine = timing?.let { t ->
+            when (t.verdict) {
+                "GOOD_TIME" -> {
+                    binding.hotelPrediction.setBackgroundResource(R.drawable.bg_status_green)
+                    binding.hotelPrediction.setTextColor(getColor(R.color.travel_green))
+                }
+                "TOO_LATE" -> {
+                    binding.hotelPrediction.setBackgroundResource(R.drawable.bg_status_red)
+                    binding.hotelPrediction.setTextColor(getColor(R.color.travel_red))
+                }
+                else -> {
+                    binding.hotelPrediction.setBackgroundResource(R.drawable.bg_status_gold)
+                    binding.hotelPrediction.setTextColor(getColor(R.color.travel_gold_dark))
+                }
+            }
+            getString(R.string.ml_advice_verdict_format, t.verdict.replace('_', ' '), t.message)
+        }
+        val rangeLine = getString(
+            R.string.ml_advice_range_format,
+            formatMoney(range.p25, advice.currency),
+            formatMoney(range.p75, advice.currency),
+            formatMoney(range.p50, advice.currency),
+        )
+        // The model's range is a market benchmark, not this hotel's quote -
+        // compare the CURRENT hotel rate against it so the advice is grounded
+        // in what the traveler actually sees, and never recommend buying at a
+        // price above the rate already on screen.
+        val currentLine = currentPrice?.let { price ->
+            when {
+                price < range.p25 -> {
+                    binding.hotelPrediction.setBackgroundResource(R.drawable.bg_status_green)
+                    binding.hotelPrediction.setTextColor(getColor(R.color.travel_green))
+                    getString(
+                        R.string.ml_advice_current_below_format,
+                        formatMoney(price, advice.currency),
+                        formatMoney(range.p25, advice.currency),
+                        formatMoney(range.p75, advice.currency),
+                    )
+                }
+                price > range.p75 -> {
+                    binding.hotelPrediction.setBackgroundResource(R.drawable.bg_status_red)
+                    binding.hotelPrediction.setTextColor(getColor(R.color.travel_red))
+                    getString(
+                        R.string.ml_advice_current_above_format,
+                        formatMoney(price, advice.currency),
+                        formatMoney(range.p25, advice.currency),
+                        formatMoney(range.p75, advice.currency),
+                    )
+                }
+                else -> {
+                    binding.hotelPrediction.setBackgroundResource(R.drawable.bg_status_gold)
+                    binding.hotelPrediction.setTextColor(getColor(R.color.travel_gold_dark))
+                    getString(
+                        R.string.ml_advice_current_within_format,
+                        formatMoney(price, advice.currency),
+                        formatMoney(range.p25, advice.currency),
+                        formatMoney(range.p75, advice.currency),
+                    )
+                }
+            }
+        }
+        // The current rate is already below the model's cheapest estimate -
+        // recommending "book early for X" would contradict what's on screen.
+        val timingLine = if (currentPrice != null && currentPrice < buy.cheapestPricePerNight) {
+            getString(
+                R.string.ml_advice_timing_below_best_format,
+                formatMoney(currentPrice, advice.currency),
+            )
+        } else if (buy.recommendedLeadDays != null) {
+            getString(
+                R.string.ml_advice_timing_days_format,
+                buy.recommendedLeadDays,
+                formatMoney(buy.cheapestPricePerNight, advice.currency),
+                buy.savingVsLastMinutePercent?.let { "%.1f".format(Locale.ENGLISH, it) } ?: "-",
+            )
+        } else {
+            getString(
+                R.string.ml_advice_timing_early_format,
+                formatMoney(buy.cheapestPricePerNight, advice.currency),
+                buy.savingVsLastMinutePercent?.let { "%.1f".format(Locale.ENGLISH, it) } ?: "-",
+            )
+        }
+        val monthLine = advice.cheapestMonth?.let { month ->
+            getString(
+                R.string.ml_advice_cheapest_month_format,
+                MONTH_NAMES.getOrNull(month - 1) ?: month.toString(),
+                advice.cheapestMonthPrice?.let { formatMoney(it, advice.currency) } ?: "-",
+            )
+        }
+        binding.hotelPrediction.text =
+            listOfNotNull(verdictLine, currentLine, rangeLine, timingLine, monthLine)
+                .joinToString("\n")
+        binding.hotelPrediction.isClickable = false
+        binding.hotelPrediction.setOnClickListener(null)
     }
 
     private fun bindHotelPrediction(prediction: HotelPricePrediction) {
@@ -467,31 +571,6 @@ class ItineraryReviewActivity : AuthenticatedActivity() {
         setBookingActionsEnabled(false)
     }
 
-private fun bindHotelFairPrice(response: HotelFairPriceResponse) {
-    if (!response.predictionAvailable) {
-        binding.hotelPrediction.text =
-            "Fair-price unavailable (${response.reason ?: "UNKNOWN"})"
-        return
-    }
-
-    val current = response.currentComparablePrice
-    val low = response.fairPriceP25
-    val high = response.fairPriceP75
-    val level = response.priceLevel
-    val currency = response.currency ?: "INR"
-
-    if (current == null || low == null || high == null || level == null) {
-        binding.hotelPrediction.text = "Fair-price result unavailable"
-        return
-    }
-
-    val symbol = if (currency.equals("INR", ignoreCase = true)) "₹" else "$currency "
-
-    binding.hotelPrediction.text =
-        "$level · Current $symbol${current.toPlainString()} · " +
-                "Fair $symbol${low.toPlainString()}–$symbol${high.toPlainString()}"
-}
-
     private fun setBookingActionsEnabled(enabled: Boolean) {
         binding.requestChangesButton.isEnabled = enabled
         binding.confirmMockBookingButton.isEnabled = enabled
@@ -558,6 +637,10 @@ private fun bindHotelFairPrice(response: HotelFairPriceResponse) {
     companion object {
         private const val TYPE_FLIGHT = "FLIGHT"
         private const val TYPE_HOTEL = "HOTEL"
+        private val MONTH_NAMES = listOf(
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December",
+        )
 
         fun createIntent(context: Context, tripRequest: TripRequestData): Intent {
             return Intent(context, ItineraryReviewActivity::class.java).apply {

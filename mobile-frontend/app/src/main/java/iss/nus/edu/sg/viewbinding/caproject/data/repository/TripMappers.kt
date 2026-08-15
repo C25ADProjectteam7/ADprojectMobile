@@ -80,8 +80,22 @@ private fun ItineraryItemResponse.toItineraryItem(): ItineraryItem {
         bookingRef?.takeIf(String::isNotBlank)?.let { "Booking $it" },
         price?.let { value -> "${currency.orEmpty().ifBlank { "SGD" }} ${value.stripTrailingZeros().toPlainString()}" },
     )
+    val isHotel = type.equals("HOTEL", ignoreCase = true)
+    // Hotels legitimately have no check-in time on mid-stay nights (one
+    // continuous stay) - show a sensible label instead of the generic
+    // "Any time" placeholder used by recommended places.
+    val startDisplay = when {
+        isHotel && startTime.isNullOrBlank() && !endTime.isNullOrBlank() ->
+            "Check-out ${endTime.toDisplayTime()}"
+        isHotel && startTime.isNullOrBlank() -> "Overnight"
+        else -> startTime.toDisplayTime()
+    }
+    val endDisplay = when {
+        isHotel && startTime.isNullOrBlank() -> null // already folded into startDisplay
+        else -> endTime.toDisplayTime().takeUnless { it == "Any time" }
+    }
     return ItineraryItem(
-        time = startTime.toDisplayTime(),
+        time = startDisplay,
         title = title,
         detail = detailParts.joinToString(" · ").ifBlank {
             type.replace('_', ' ')
@@ -90,12 +104,11 @@ private fun ItineraryItemResponse.toItineraryItem(): ItineraryItem {
         },
         state = if (bookingRef.isNullOrBlank()) ItineraryItemState.PLANNED else ItineraryItemState.CONFIRMED,
         type = type,
-        endTime = endTime.toDisplayTime().takeUnless { it == "Any time" },
+        endTime = endDisplay,
         price = price,
         currency = currency,
         location = location,
         bookingRef = bookingRef,
-        rawJson = description,
     )
 }
 

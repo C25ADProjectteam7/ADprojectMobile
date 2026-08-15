@@ -213,6 +213,15 @@
     <string name="no_other_itinerary_item">No additional itinerary highlight was returned</string>
     <string name="itinerary_item_type_format">%1$s itinerary item</string>
     <string name="ml_prediction_loading">Loading ML hotel-price estimate…</string>
+    <string name="ml_advice_verdict_format">%1$s: %2$s</string>
+    <string name="ml_advice_current_below_format">Current rate %1$s is BELOW the market range (%2$s–%3$s) — good deal</string>
+    <string name="ml_advice_current_above_format">Current rate %1$s is ABOVE the market range (%2$s–%3$s)</string>
+    <string name="ml_advice_current_within_format">Current rate %1$s is within the market range (%2$s–%3$s)</string>
+    <string name="ml_advice_timing_below_best_format">Current rate %1$s already beats the model cheapest estimate - booking now is a good deal</string>
+    <string name="ml_advice_range_format">ML price range: %1$s – %2$s/night (median %3$s)</string>
+    <string name="ml_advice_timing_days_format">Best to book %1$d days ahead (%2$s/night, saves ~%3$s%%)</string>
+    <string name="ml_advice_timing_early_format">Book early — cheapest %1$s/night (saves ~%2$s%% vs last-minute)</string>
+    <string name="ml_advice_cheapest_month_format">Cheapest month: %1$s (%2$s/night)</string>
     <string name="ml_prediction_live_format">ML estimate · %1$s/night · %2$s total · %3$d nights%4$s</string>
     <string name="ml_prediction_mock_format">Mock ML estimate · %1$s/night · %2$s total · %3$d nights%4$s</string>
     <string name="ml_prediction_metadata_format"> · %1$s %2$s</string>

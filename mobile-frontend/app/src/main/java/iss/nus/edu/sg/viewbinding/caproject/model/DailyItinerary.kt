@@ -21,7 +21,6 @@ data class ItineraryItem(
     val currency: String? = null,
     val location: String? = null,
     val bookingRef: String? = null,
-    val rawJson: String? = null,
 )
 
 enum class ItineraryItemState {

@@ -33,7 +33,7 @@ class ApiContractTest {
         ).flatMap(::endpointsFor).toSet()
 
         assertEquals(EXPECTED_ENDPOINTS, endpoints)
-        assertEquals(27, endpoints.size)
+        assertEquals(28, endpoints.size)
     }
 
     @Test
@@ -135,6 +135,7 @@ class ApiContractTest {
             "PUT api/users/me",
             "PUT api/users/me/password",
             "POST api/ml/predict-hotel-price",
+            "POST api/ml/v2/price-advice",
         )
     }
 }

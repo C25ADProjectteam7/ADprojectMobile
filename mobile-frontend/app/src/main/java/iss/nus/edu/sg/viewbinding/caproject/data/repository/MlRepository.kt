@@ -2,7 +2,11 @@ package iss.nus.edu.sg.viewbinding.caproject.data.repository
 
 import android.content.Context
 import com.google.gson.Gson
+import iss.nus.edu.sg.viewbinding.caproject.model.BuyTiming
+import iss.nus.edu.sg.viewbinding.caproject.model.CurrentTiming
 import iss.nus.edu.sg.viewbinding.caproject.model.HotelPricePrediction
+import iss.nus.edu.sg.viewbinding.caproject.model.PriceAdvice
+import iss.nus.edu.sg.viewbinding.caproject.model.PriceRange
 import iss.nus.edu.sg.viewbinding.caproject.network.ApiClient
 import iss.nus.edu.sg.viewbinding.caproject.network.ApiFailureKind
 import iss.nus.edu.sg.viewbinding.caproject.network.ApiResult
@@ -10,8 +14,9 @@ import iss.nus.edu.sg.viewbinding.caproject.network.MlApi
 import iss.nus.edu.sg.viewbinding.caproject.network.executeApiCall
 import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelPricePredictionRequest
 import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelPricePredictionResponse
-import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelFairPriceRequest
-import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelFairPriceResponse
+import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.PriceAdviceRequest
+import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.PriceAdviceResponse
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.Locale
 
@@ -50,22 +55,76 @@ class MlRepository(
         }
     }
 
-    suspend fun predictHotelFairPrice(
-        hotelId: String,
-        hotelName: String,
+    suspend fun getPriceAdvice(
+        city: String,
         checkInDate: LocalDate,
+        checkOutDate: LocalDate,
+        roomType: String,
+        numberOfGuests: Int,
         bookingDate: LocalDate = LocalDate.now(),
-    ): ApiResult<HotelFairPriceResponse> {
-        val request = HotelFairPriceRequest(
-            hotelId = hotelId.trim(),
-            hotelName = hotelName.trim(),
-            bookingDate = bookingDate.toString(),
+        currentPrice: BigDecimal? = null,
+    ): ApiResult<PriceAdvice> {
+        val request = PriceAdviceRequest(
+            city = city.trim(),
             checkInDate = checkInDate.toString(),
+            checkOutDate = checkOutDate.toString(),
+            roomType = roomType.lowercase(Locale.ENGLISH),
+            numberOfGuests = numberOfGuests,
+            bookingDate = bookingDate.toString(),
+            currentPrice = currentPrice,
         )
-
-        return executeApiCall(gson) {
-            mlApi.predictHotelFairPrice(request)
+        return when (val result = executeApiCall(gson) { mlApi.priceAdvice(request) }) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> runCatching { result.value.toAdvice() }
+                .fold(
+                    onSuccess = { ApiResult.Success(it) },
+                    onFailure = { ApiResult.Failure(ApiFailureKind.INVALID_RESPONSE) },
+                )
         }
+    }
+
+    private fun PriceAdviceResponse.toAdvice(): PriceAdvice {
+        val available = requireNotNull(predictionAvailable)
+        require(available)
+        val perNight = requireNotNull(priceRangePerNight)
+        val total = requireNotNull(totalPriceRange)
+        val timing = requireNotNull(buyTiming)
+        val range = PriceRange(
+            p25 = requireNotNull(perNight.p25),
+            p50 = requireNotNull(perNight.p50),
+            p75 = requireNotNull(perNight.p75),
+        )
+        val totalRange = PriceRange(
+            p25 = requireNotNull(total.p25),
+            p50 = requireNotNull(total.p50),
+            p75 = requireNotNull(total.p75),
+        )
+        return PriceAdvice(
+            priceRangePerNight = range,
+            totalPriceRange = totalRange,
+            buyTiming = BuyTiming(
+                recommendedLeadDays = timing.recommendedLeadDays,
+                cheapestPricePerNight = requireNotNull(timing.cheapestPricePerNight),
+                savingVsLastMinutePercent = timing.savingVsLastMinutePercent,
+                message = timing.message.orEmpty().trim(),
+            ),
+            currentTiming = currentTiming?.let { timing ->
+                CurrentTiming(
+                    currentLeadDays = timing.currentLeadDays,
+                    currentPricePerNight = timing.currentPricePerNight,
+                    bestPricePerNight = timing.bestPricePerNight,
+                    premiumVsBestPercent = timing.premiumVsBestPercent,
+                    verdict = timing.verdict.orEmpty().trim(),
+                    message = timing.message.orEmpty().trim(),
+                )
+            },
+            cheapestMonth = cheapestMonth?.month,
+            cheapestMonthPrice = cheapestMonth?.p50PerNight,
+            currency = currency.orEmpty().trim().ifBlank { "USD" }.uppercase(Locale.ENGLISH),
+            modelStatus = modelStatus.orEmpty().trim(),
+            modelVersion = modelVersion.orEmpty().trim(),
+            message = message.orEmpty().trim(),
+        )
     }
 
     private fun HotelPricePredictionResponse.toPrediction(): HotelPricePrediction {
