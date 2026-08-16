@@ -109,6 +109,7 @@ private fun ItineraryItemResponse.toItineraryItem(): ItineraryItem {
         currency = currency,
         location = location,
         bookingRef = bookingRef,
+        rawJson = description,
     )
 }
 

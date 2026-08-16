@@ -21,6 +21,11 @@ data class ItineraryItem(
     val currency: String? = null,
     val location: String? = null,
     val bookingRef: String? = null,
+    // The Agent's activity JSON exactly as the backend stored it. `detail`
+    // above is a human-readable flattening of the same data and is lossy, so
+    // anything that needs a specific field (hotelId, candidateHotels) must
+    // read it from here rather than parsing display text back apart.
+    val rawJson: String? = null,
 )
 
 enum class ItineraryItemState {

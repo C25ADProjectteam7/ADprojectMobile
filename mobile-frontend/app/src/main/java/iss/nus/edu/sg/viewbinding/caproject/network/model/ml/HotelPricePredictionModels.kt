@@ -31,6 +31,44 @@ data class HotelPricePredictionResponse(
     val message: String?,
 )
 
+/**
+ * India hotel fair-price (V3) request. `candidateHotels` carries IDENTITY ONLY -
+ * the ML service re-probes every hotel itself on the one-night INR contract, so
+ * sending the Agent's USD stay totals would compare two different measurements.
+ */
+data class HotelFairPriceRequest(
+    val hotelId: String,
+    val hotelName: String,
+    val bookingDate: String,
+    val checkInDate: String,
+    val candidateHotels: List<CandidateHotelDto>,
+)
+
+data class CandidateHotelDto(
+    val hotelId: String,
+    val hotelName: String?,
+)
+
+data class HotelFairPriceResponse(
+    @SerializedName(value = "predictionAvailable", alternate = ["prediction_available"])
+    val predictionAvailable: Boolean?,
+    val reason: String? = null,
+    @SerializedName(value = "predictionSource", alternate = ["prediction_source"])
+    val predictionSource: String? = null,
+    @SerializedName(value = "modelVersion", alternate = ["model_version"])
+    val modelVersion: String? = null,
+    // Final, already context-adjusted band. The app displays these as-is.
+    val fairPriceP25: BigDecimal? = null,
+    val fairPriceP50: BigDecimal? = null,
+    val fairPriceP75: BigDecimal? = null,
+    val decisionLow: BigDecimal? = null,
+    val decisionHigh: BigDecimal? = null,
+    val currentComparablePrice: BigDecimal? = null,
+    val priceLevel: String? = null,
+    val currency: String? = null,
+    val contextAdjustmentApplied: Boolean? = null,
+)
+
 data class PriceAdviceRequest(
     val city: String,
     val checkInDate: String,

@@ -3,6 +3,7 @@ package iss.nus.edu.sg.viewbinding.caproject.ui.trips
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.core.content.IntentCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.isVisible
@@ -13,9 +14,12 @@ import iss.nus.edu.sg.viewbinding.caproject.data.repository.AgentPollResult
 import iss.nus.edu.sg.viewbinding.caproject.data.repository.AgentTaskProgress
 import iss.nus.edu.sg.viewbinding.caproject.data.repository.AgentTripPlanner
 import iss.nus.edu.sg.viewbinding.caproject.data.repository.BookingRepository
+import iss.nus.edu.sg.viewbinding.caproject.data.repository.HotelCandidateContext
+import iss.nus.edu.sg.viewbinding.caproject.data.repository.HotelFairPriceOutcome
 import iss.nus.edu.sg.viewbinding.caproject.data.repository.MlRepository
 import iss.nus.edu.sg.viewbinding.caproject.data.repository.TripRepository
 import iss.nus.edu.sg.viewbinding.caproject.databinding.ActivityItineraryReviewBinding
+import iss.nus.edu.sg.viewbinding.caproject.model.HotelFairPrice
 import iss.nus.edu.sg.viewbinding.caproject.model.ItineraryItem
 import iss.nus.edu.sg.viewbinding.caproject.model.HotelPricePrediction
 import iss.nus.edu.sg.viewbinding.caproject.model.PriceAdvice
@@ -280,6 +284,14 @@ class ItineraryReviewActivity : AuthenticatedActivity() {
         binding.hotelPrediction.setText(R.string.ml_prediction_loading)
         binding.hotelPrediction.isClickable = false
         lifecycleScope.launch {
+            // The India fair-price model (V3) is the most specific answer we
+            // have: it judges THIS hotel on a comparable one-night quote, using
+            // the other hotels this trip offered as context. It only covers
+            // supported markets and lead times, so anything it declines -
+            // including a hotel with no hotelId, i.e. an itinerary generated
+            // before candidate context existed - falls through to the existing
+            // price-advice flow untouched.
+            if (loadHotelFairPrice(hotel)) return@launch
             // Price-advice (range + best-buy timing) is the primary ML
             // widget; fall back to the point prediction if it fails.
             when (
@@ -320,6 +332,93 @@ class ItineraryReviewActivity : AuthenticatedActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Tries the India fair-price flow. Returns true when the card was bound
+     * from it, false to let the caller fall back to price advice.
+     *
+     * A transport failure returns false as well: the fair-price model is an
+     * enhancement, and losing it must never leave the card with no estimate.
+     */
+    private suspend fun loadHotelFairPrice(hotel: ItineraryItem): Boolean {
+        val hotelId = HotelCandidateContext.hotelId(hotel)
+        if (hotelId.isNullOrBlank()) {
+            Log.i(TAG, "Fair price skipped: itinerary carries no hotelId")
+            return false
+        }
+        val candidates = HotelCandidateContext.candidates(hotel)
+        val result = mlRepository.predictHotelFairPrice(
+            hotelId = hotelId,
+            hotelName = hotel.title,
+            checkInDate = tripRequest.startDate,
+            candidates = candidates,
+        )
+        return when (result) {
+            is ApiResult.Success -> when (val outcome = result.value) {
+                is HotelFairPriceOutcome.Available -> {
+                    bindHotelFairPrice(outcome.value)
+                    true
+                }
+                // UNSUPPORTED_MARKET / NO_COMPARABLE_RATE / UNSUPPORTED_LEAD_TIME
+                // / MODEL_ERROR - all expected, all fall back to price advice.
+                is HotelFairPriceOutcome.Unavailable -> {
+                    Log.i(TAG, "Fair price unavailable (${outcome.reason}); using price advice")
+                    false
+                }
+            }
+            is ApiResult.Failure -> {
+                Log.i(TAG, "Fair price call failed (${result.kind}); using price advice")
+                false
+            }
+        }
+    }
+
+    /**
+     * The fair-price badge. `fairPrice` already carries the backend's final,
+     * context-adjusted band - nothing is recomputed here.
+     *
+     * This benchmark is a comparable ONE-NIGHT, two-adult quote in the market's
+     * own currency. It deliberately does not touch binding.hotelPrice, which
+     * shows the Agent's whole-stay booking total: the two answer different
+     * questions and must not be blended.
+     */
+    private fun bindHotelFairPrice(fairPrice: HotelFairPrice) {
+        when (fairPrice.priceLevel) {
+            "CHEAP" -> {
+                binding.hotelPrediction.setBackgroundResource(R.drawable.bg_status_green)
+                binding.hotelPrediction.setTextColor(getColor(R.color.travel_green))
+            }
+            "EXPENSIVE" -> {
+                binding.hotelPrediction.setBackgroundResource(R.drawable.bg_status_red)
+                binding.hotelPrediction.setTextColor(getColor(R.color.travel_red))
+            }
+            else -> {
+                binding.hotelPrediction.setBackgroundResource(R.drawable.bg_status_gold)
+                binding.hotelPrediction.setTextColor(getColor(R.color.travel_gold_dark))
+            }
+        }
+        val headline = getString(
+            R.string.ml_fair_price_format,
+            fairPrice.priceLevel,
+            formatMoney(fairPrice.currentComparablePrice, fairPrice.currency),
+            formatMoney(fairPrice.decisionLow, fairPrice.currency),
+            formatMoney(fairPrice.decisionHigh, fairPrice.currency),
+        )
+        // Says only THAT this trip's other options were used - never the
+        // factor, the median or the clamp, which are debug detail.
+        val lines = listOfNotNull(
+            headline,
+            getString(R.string.ml_fair_price_basis),
+            if (fairPrice.contextAdjustmentApplied) {
+                getString(R.string.ml_fair_price_context_applied)
+            } else {
+                null
+            },
+        )
+        binding.hotelPrediction.text = lines.joinToString("\n")
+        binding.hotelPrediction.isClickable = false
+        binding.hotelPrediction.setOnClickListener(null)
     }
 
     private fun bindPriceAdvice(advice: PriceAdvice, currentPrice: BigDecimal?) {
@@ -638,6 +737,7 @@ class ItineraryReviewActivity : AuthenticatedActivity() {
     }
 
     companion object {
+        private const val TAG = "ItineraryReview"
         private const val TYPE_FLIGHT = "FLIGHT"
         private const val TYPE_HOTEL = "HOTEL"
         private val MONTH_NAMES = listOf(
