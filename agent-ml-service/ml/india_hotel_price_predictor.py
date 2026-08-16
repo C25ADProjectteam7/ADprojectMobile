@@ -41,6 +41,9 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor
 
+from ml.india_context_adjustment import (
+    REASON_HISTORICAL_EXCLUDED, REASON_NO_CANDIDATES, no_adjustment,
+)
 from ml.india_serving_features import (
     V3_CATEGORICAL, V3_FEATURES, calendar_features, normalize_name,
     room_category, serving_city, v3_features,
@@ -112,7 +115,8 @@ class IndiaHotelPricePredictor:
                 city: str = None, rating: float = None, review_count: int = None,
                 stars: float = None, chain: str = None, hotel_type_id: int = None,
                 facility_ids: list = None,
-                comparison_offer_selection: str = "CHEAPEST_COMPARABLE_ONE_NIGHT") -> dict:
+                comparison_offer_selection: str = "CHEAPEST_COMPARABLE_ONE_NIGHT",
+                context: dict = None) -> dict:
         if not self._ensure():
             return _unavailable("MODEL_ERROR")
         if not is_india(market):
@@ -169,24 +173,57 @@ class IndiaHotelPricePredictor:
 
         p25, p50, p75 = p25 * f, p50 * f, p75 * f
 
-        tol = self._tolerance
         # Round the band BEFORE deciding, so the verdict is always consistent
         # with the numbers we publish - a caller echoing back decisionLow must
         # get FAIR, not CHEAP off a hidden extra decimal.
-        p25, p50, p75 = round(p25, 2), round(p50, 2), round(p75, 2)
-        low = round(min(p25, (1 - tol) * p50), 2)
-        high = round(max(p75, (1 + tol) * p50), 2)
+        raw_p25, raw_p50, raw_p75 = round(p25, 2), round(p50, 2), round(p75, 2)
+        raw_low, raw_high = self._band(raw_p25, raw_p50, raw_p75)
+
+        # The current-trip candidate context belongs to the ML path only. The
+        # HISTORICAL quantiles are the hotel's OWN price history, already
+        # rebased by the CPI factor above; scaling them again by a factor
+        # derived from other hotels would stack a second, differently-sourced
+        # correction onto a correction that already exists.
+        ctx = dict(context) if context else no_adjustment(REASON_NO_CANDIDATES)
+        if source != "ML":
+            ctx = no_adjustment(REASON_HISTORICAL_EXCLUDED)
+
+        if ctx["applied"]:
+            cf = float(ctx["factor"])
+            p25, p50, p75 = (round(raw_p25 * cf, 2), round(raw_p50 * cf, 2),
+                             round(raw_p75 * cf, 2))
+            low, high = self._band(p25, p50, p75)
+        else:
+            p25, p50, p75, low, high = raw_p25, raw_p50, raw_p75, raw_low, raw_high
+
         level = "CHEAP" if price < low else ("EXPENSIVE" if price > high else "FAIR")
 
         return {
             "predictionAvailable": True,
             "predictionSource": source,
             "modelVersion": self.model_version,
+            # Final, context-adjusted result. These keep the original names so
+            # existing consumers need no change.
             "fairPriceP25": p25,
             "fairPriceP50": p50,
             "fairPriceP75": p75,
             "decisionLow": low,
             "decisionHigh": high,
+            # The model's own output, always published so the adjustment can be
+            # audited and undone. Identical to the fields above when no
+            # adjustment applied.
+            "rawFairPriceP25": raw_p25,
+            "rawFairPriceP50": raw_p50,
+            "rawFairPriceP75": raw_p75,
+            "rawDecisionLow": raw_low,
+            "rawDecisionHigh": raw_high,
+            "contextAdjustmentApplied": ctx["applied"],
+            "contextAdjustmentFactor": ctx["factor"],
+            "contextAdjustmentRawFactor": ctx["rawFactor"],
+            "contextAdjustmentClamped": ctx["clamped"],
+            "contextAdjustmentReason": ctx["reason"],
+            "contextAdjustmentBasis": ctx["basis"],
+            "validContextHotelCount": ctx["validContextHotelCount"],
             "currentComparablePrice": round(price, 2),
             "priceLevel": level,
             "currency": SUPPORTED_CURRENCY,
@@ -197,6 +234,12 @@ class IndiaHotelPricePredictor:
             "priceBasis": price_basis,
             "temporalAdjustmentFactor": f,
         }
+
+    def _band(self, p25: float, p50: float, p75: float):
+        """Business decision band around the quantiles."""
+        tol = self._tolerance
+        return (round(min(p25, (1 - tol) * p50), 2),
+                round(max(p75, (1 + tol) * p50), 2))
 
     # -------------------------------------------------------------- routing
     def _lookup_b2(self, hotel_key: str, room_cat: str):

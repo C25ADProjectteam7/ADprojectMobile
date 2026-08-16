@@ -73,6 +73,100 @@ async def fetch_hotel_country(hotel_id: str) -> Optional[str]:
     return (await fetch_hotel_profile(hotel_id)).get("country")
 
 
+def _profile_of(h: dict) -> dict:
+    return {"country": h.get("country"), "city": h.get("city"),
+            "rating": h.get("rating"), "reviewCount": h.get("reviewCount"),
+            "stars": h.get("stars"), "chain": h.get("chain"),
+            "hotelTypeId": h.get("hotelTypeId"),
+            "facilityIds": h.get("facilityIds") or []}
+
+
+async def fetch_hotel_profiles_batch(hotel_ids: list) -> dict:
+    """Profiles for many hotels in ONE /data/hotels call.
+
+    The ids MUST be comma-joined into a single `hotelIds` value. Passing them
+    as repeated query parameters is accepted by the API but silently returns
+    only the first hotel - verified against the live endpoint, where the
+    comma-joined form returned 5/5 and the repeated form returned 1/5.
+    """
+    ids = [str(h) for h in hotel_ids if h]
+    if not ids:
+        return {}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.get(f"{config.LITEAPI_BASE_URL}/data/hotels",
+                             headers=_headers(),
+                             params={"hotelIds": ",".join(ids)})
+        r.raise_for_status()
+        data = r.json().get("data") or []
+    return {str(h.get("id")): _profile_of(h) for h in data if h.get("id")}
+
+
+async def get_fair_price_probes_batch(hotel_ids: list, check_in: str) -> dict:
+    """One-night INR probe for many hotels in TWO calls total.
+
+    Same contract as get_fair_price_probe - 1 night, 1 room, 2 adults, INR,
+    guestNationality IN, cheapest comparable offer - because these quotes are
+    compared against predictions from a model trained on exactly that context.
+    Any divergence here would make the comparison meaningless, so the shared
+    PROBE_* constants are used rather than repeating the literals.
+
+    Returns {hotelId: probe}, omitting hotels with no comparable rate. A hotel
+    whose profile lookup failed still gets its rate; the missing attributes are
+    passed through as None and the feature builder owns the semantics.
+    """
+    ids = [str(h) for h in hotel_ids if h]
+    if not ids:
+        return {}
+    check_out = next_day(check_in)
+    payload = {
+        "hotelIds": ids,
+        "occupancies": [{"adults": PROBE_ADULTS}],   # 1 object == 1 room
+        "currency": PROBE_CURRENCY,
+        "guestNationality": PROBE_GUEST_NATIONALITY,
+        "checkin": check_in,
+        "checkout": check_out,
+        "roomMapping": False,
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.post(f"{config.LITEAPI_BASE_URL}/hotels/rates",
+                              headers={**_headers(), "Content-Type": "application/json"},
+                              json=payload)
+        r.raise_for_status()
+        rates = r.json()
+
+    offers = {hid: select_comparable_offer(rates, hid) for hid in ids}
+    priced = [hid for hid, offer in offers.items() if offer is not None]
+    if not priced:
+        return {}
+
+    try:
+        profiles = await fetch_hotel_profiles_batch(priced)
+    except Exception:
+        profiles = {}
+
+    out = {}
+    for hid in priced:
+        offer, profile = offers[hid], profiles.get(hid, {})
+        out[hid] = {
+            "available": True,
+            "hotelId": hid,
+            "checkIn": check_in,
+            "checkOut": check_out,
+            "nights": PROBE_NIGHTS,
+            "rooms": PROBE_ROOMS,
+            "adults": PROBE_ADULTS,
+            "currency": offer.get("currency") or PROBE_CURRENCY,
+            "comparableOneNightPrice": offer["amount"],
+            "comparisonOfferSelection": OFFER_SELECTION_RULE,
+            **{k: profile.get(k) for k in ("country", "city", "rating", "reviewCount",
+                                           "stars", "chain", "hotelTypeId")},
+            "facilityIds": profile.get("facilityIds") or [],
+            **{k: offer.get(k) for k in ("offerId", "roomName", "boardType", "boardName",
+                                         "refundableTag", "adultCount", "childCount")},
+        }
+    return out
+
+
 def select_comparable_offer(rates_payload: dict, hotel_id: str) -> Optional[dict]:
     """Deterministic rule: cheapest valid one-night offer for this hotel.
 
