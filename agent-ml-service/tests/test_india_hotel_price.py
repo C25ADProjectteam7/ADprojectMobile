@@ -681,9 +681,21 @@ def _unseen(predictor, **kw):
 # ------------------------------------------------- V3 A. artifact provenance
 @needs_artifact
 def test_v1_and_v21_artifacts_remain_untouched():
-    for n in ("hotel_price_india_hybrid_v1.cbm", "hotel_price_india_hybrid_v1.joblib",
-              "hotel_price_india_hybrid_v21.cbm", "hotel_price_india_hybrid_v21.joblib"):
+    """V3 must not remove the artifacts that shipped before it.
+
+    v1 is committed, so its presence is asserted unconditionally. The v2.1
+    bundle was deliberately never committed (the V2.1 calibration audit ended
+    in DO NOT COMMIT), so it exists only on machines that built it - requiring
+    it here would fail every clean checkout and every CI run. It is therefore
+    checked only when present, which is what "remains untouched" can mean for
+    a file the repository does not carry.
+    """
+    for n in ("hotel_price_india_hybrid_v1.cbm", "hotel_price_india_hybrid_v1.joblib"):
         assert (MODELS / n).exists(), f"{n} was removed"
+    for n in ("hotel_price_india_hybrid_v21.cbm", "hotel_price_india_hybrid_v21.joblib"):
+        p = MODELS / n
+        if p.exists():
+            assert p.stat().st_size > 0, f"{n} was truncated"
 
 
 @needs_artifact
