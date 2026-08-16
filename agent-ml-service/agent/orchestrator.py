@@ -833,8 +833,12 @@ Scheduling rules:
 - No data for a category -> null. Relaxation flags ("budgetRelaxed"/
   "preferenceRelaxed") -> list their notes in "warnings". Empty flight search
   -> best-effort totalCost + warning, never invent a flight.
-- totalCost = flight(s) + hotel(per-night x nights). Restaurants/attractions
-  are informational, excluded from totalCost.
+- Hotel price fields mean exactly this: "stayTotalPrice" is the price for the
+  WHOLE stay, "averagePricePerNight" is that total divided by "numberOfNights".
+  Copy them through verbatim - never multiply stayTotalPrice by nights.
+- totalCost = flight(s) + hotel "stayTotalPrice" (added ONCE, it already covers
+  every night). Restaurants/attractions are informational, excluded from
+  totalCost.
 - Return ONLY the JSON object.
 """
 
@@ -1246,6 +1250,11 @@ Traveler's request: "{user_request}"
 
 Newly gathered data to use for the change:
 {json.dumps(new_data, indent=2)}
+
+Hotel price fields mean exactly this: "stayTotalPrice" is the price for the
+WHOLE stay and "averagePricePerNight" is that total divided by
+"numberOfNights" - when recalculating "totalCost", add "stayTotalPrice" ONCE,
+never multiplied by nights.
 
 Return the COMPLETE updated itinerary in the same JSON structure as the
 current one (all "dayN" keys, "totalCost", "warnings"), plus one additional
