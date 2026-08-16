@@ -180,6 +180,8 @@
     <string name="hotel_stay">12–14 Aug · 2 nights</string>
     <string name="hotel_rate">S$96/night</string>
     <string name="hotel_price">S$288</string>
+    <!-- LiteAPI prices the whole check-in..check-out stay, not one night. -->
+    <string name="hotel_stay_total_format">%1$s total stay</string>
     <string name="transfer_title">Airport → city centre</string>
     <string name="transfer_description">Mock ground-transfer estimate</string>
     <string name="transfer_duration">45 min</string>

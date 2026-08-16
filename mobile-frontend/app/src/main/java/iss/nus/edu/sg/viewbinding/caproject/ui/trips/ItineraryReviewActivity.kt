@@ -268,7 +268,10 @@ class ItineraryReviewActivity : AuthenticatedActivity() {
         binding.hotelSummary.text = item.location ?: item.detail
         binding.hotelStay.text = formatSchedule(item)
         binding.hotelRate.text = item.bookingRef ?: item.type.toDisplayLabel()
-        binding.hotelPrice.text = item.price?.let { formatMoney(it, item.currency) }
+        // item.price is LiteAPI's price for the WHOLE stay, not one night -
+        // label it as such so the card can never be read as a nightly rate.
+        binding.hotelPrice.text = item.price
+            ?.let { getString(R.string.hotel_stay_total_format, formatMoney(it, item.currency)) }
             ?: getString(R.string.price_pending)
         loadHotelPrediction(item)
     }
