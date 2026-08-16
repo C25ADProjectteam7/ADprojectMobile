@@ -33,7 +33,7 @@ class ApiContractTest {
         ).flatMap(::endpointsFor).toSet()
 
         assertEquals(EXPECTED_ENDPOINTS, endpoints)
-        assertEquals(28, endpoints.size)
+        assertEquals(29, endpoints.size)
     }
 
     @Test
@@ -135,6 +135,9 @@ class ApiContractTest {
             "PUT api/users/me",
             "PUT api/users/me/password",
             "POST api/ml/predict-hotel-price",
+            // India fair price (V3). Spring proxies this to the ML service's
+            // by-hotel-id endpoint; the app never calls Python directly.
+            "POST api/ml/v2/hotel-price",
             "POST api/ml/v2/price-advice",
         )
     }

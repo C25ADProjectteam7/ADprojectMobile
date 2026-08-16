@@ -228,6 +228,12 @@
     <string name="ml_prediction_mock_format">Mock ML estimate · %1$s/night · %2$s total · %3$d nights%4$s</string>
     <string name="ml_prediction_metadata_format"> · %1$s %2$s</string>
     <string name="ml_prediction_retry_format">%1$s · Tap to retry</string>
+    <!-- India fair-price (V3). The range is the final, already-adjusted band;
+         the app never recomputes it. Kept separate from the hotel's booking
+         total, which is a whole-stay quote and a different question. -->
+    <string name="ml_fair_price_format">%1$s · Current %2$s · Fair %3$s–%4$s</string>
+    <string name="ml_fair_price_basis">Comparable 1 night · 1 room · 2 adults</string>
+    <string name="ml_fair_price_context_applied">Adjusted using current trip options</string>
     <string name="ml_forbidden">You do not have permission to request this prediction.</string>
     <string name="ml_validation_failed">The hotel prediction details are invalid.</string>
     <string name="ml_not_found">The ML prediction service could not be found.</string>
