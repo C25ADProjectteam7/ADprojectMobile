@@ -93,6 +93,10 @@ def _parse_llm_json(raw: str):
 MAX_TOOL_CALLS_PER_TURN = 5
 MAX_TOOL_CALLS_PER_TASK = 8
 MAX_CALLS_PER_TOOL_PER_TASK = 2
+# search_hotels already returns at most 5 ranked candidates; this caps what is
+# recorded onto the chosen hotel for fair-price context, and bounds the number
+# of hotels the ML service will re-probe.
+MAX_CANDIDATE_CONTEXT_HOTELS = 5
 
 
 class _ToolArgs(BaseModel):
@@ -833,8 +837,12 @@ Scheduling rules:
 - No data for a category -> null. Relaxation flags ("budgetRelaxed"/
   "preferenceRelaxed") -> list their notes in "warnings". Empty flight search
   -> best-effort totalCost + warning, never invent a flight.
-- totalCost = flight(s) + hotel(per-night x nights). Restaurants/attractions
-  are informational, excluded from totalCost.
+- Hotel price fields mean exactly this: "stayTotalPrice" is the price for the
+  WHOLE stay, "averagePricePerNight" is that total divided by "numberOfNights".
+  Copy them through verbatim - never multiply stayTotalPrice by nights.
+- totalCost = flight(s) + hotel "stayTotalPrice" (added ONCE, it already covers
+  every night). Restaurants/attractions are informational, excluded from
+  totalCost.
 - Return ONLY the JSON object.
 """
 
@@ -922,6 +930,93 @@ def _ensure_offer_ids(itinerary: dict, gathered: dict) -> None:
         if flight and flight.get("flightNumber") in flight_offers:
             flight["offerId"] = flight_offers[flight["flightNumber"]]
 
+
+def _hotel_candidates_from_call(call: dict) -> list[dict]:
+    """The candidate identities one search_hotels call returned, in its own
+    ranked order. Identity only - no prices (see _ensure_hotel_candidate_context)."""
+    results = call.get("results", {})
+    entries = results.get("hotels", []) if isinstance(results, dict) else results
+    if not isinstance(entries, list):
+        return []
+    out = []
+    for h in entries:
+        if not isinstance(h, dict):
+            continue
+        hotel_id, name = h.get("hotelId"), h.get("name")
+        if hotel_id and isinstance(name, str) and name.strip():
+            out.append({"hotelId": str(hotel_id), "hotelName": name})
+    return out[:MAX_CANDIDATE_CONTEXT_HOTELS]
+
+
+def _ensure_hotel_candidate_context(itinerary: dict, gathered: dict,
+                                    existing_itinerary: dict | None = None) -> None:
+    """Record which hotels were actually on offer alongside the one that was
+    chosen, writing them from our own search data rather than the LLM's output.
+
+    The ML fair-price service can sharpen a prediction using the OTHER hotels
+    that were available for this same trip, but only if their identities
+    survive into the persisted itinerary. The assembly LLM cannot carry them:
+    it is only ever shown the top 3 (see _trim_for_assembly), and it already
+    drops or corrupts long verbatim fields - which is the whole reason
+    _ensure_offer_ids exists. So this injects them programmatically, keyed by
+    hotel name, exactly as _ensure_offer_ids does for offerId.
+
+    `hotelId` is written for the same reason: it is the key the fair-price
+    endpoint looks the hotel up by, and nothing else guarantees the LLM copied
+    it through.
+
+    ONLY identities are attached - hotelId and hotelName. Prices are
+    deliberately excluded: the Agent quotes whole-stay USD totals for the
+    traveller's real dates, while the fair-price service re-probes each hotel
+    on its own one-night INR contract. Carrying the USD figures across would
+    invite comparing two different measurements.
+
+    Hotel selection, ranking and the top-5 ordering are untouched; this only
+    records what search_hotels already returned, in the order it returned it.
+    """
+    context_by_name: dict[str, dict] = {}
+
+    # A modify run that does not re-search keeps whatever the previous
+    # generation recorded, so the context does not silently vanish.
+    if isinstance(existing_itinerary, dict):
+        for key, day in existing_itinerary.items():
+            if not key.startswith("day") or not isinstance(day, dict):
+                continue
+            hotel = day.get("hotel")
+            if not isinstance(hotel, dict) or not isinstance(hotel.get("name"), str):
+                continue
+            candidates = hotel.get("candidateHotels")
+            if isinstance(candidates, list) and candidates:
+                context_by_name[hotel["name"]] = {
+                    "hotelId": hotel.get("hotelId"),
+                    "candidateHotels": candidates,
+                }
+
+    # A fresh search always wins over the carried-forward copy.
+    for call in gathered.get("search_hotels", []):
+        candidates = _hotel_candidates_from_call(call)
+        if not candidates:
+            continue
+        for candidate in candidates:
+            context_by_name[candidate["hotelName"]] = {
+                "hotelId": candidate["hotelId"],
+                "candidateHotels": candidates,
+            }
+
+    for key, day in itinerary.items():
+        if not key.startswith("day") or not isinstance(day, dict):
+            continue
+        hotel = day.get("hotel")
+        if not isinstance(hotel, dict):
+            continue
+        context = context_by_name.get(hotel.get("name"))
+        if context is None:
+            continue
+        if context["hotelId"]:
+            hotel["hotelId"] = context["hotelId"]
+        hotel["candidateHotels"] = context["candidateHotels"]
+
+
 async def _assemble_and_validate_itinerary(
         assembly_messages: list[dict],
         gathered: dict,
@@ -945,6 +1040,7 @@ async def _assemble_and_validate_itinerary(
         try:
             itinerary = _parse_llm_json(raw_itinerary)
             _ensure_offer_ids(itinerary, gathered)
+            _ensure_hotel_candidate_context(itinerary, gathered, existing_itinerary)
             return _validate_and_normalize_itinerary(
                 itinerary, gathered, expected_num_days, expected_start_date, existing_itinerary
             )
@@ -1246,6 +1342,11 @@ Traveler's request: "{user_request}"
 
 Newly gathered data to use for the change:
 {json.dumps(new_data, indent=2)}
+
+Hotel price fields mean exactly this: "stayTotalPrice" is the price for the
+WHOLE stay and "averagePricePerNight" is that total divided by
+"numberOfNights" - when recalculating "totalCost", add "stayTotalPrice" ONCE,
+never multiplied by nights.
 
 Return the COMPLETE updated itinerary in the same JSON structure as the
 current one (all "dayN" keys, "totalCost", "warnings"), plus one additional

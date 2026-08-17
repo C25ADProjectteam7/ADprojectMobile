@@ -4,6 +4,8 @@ import android.content.Context
 import com.google.gson.Gson
 import iss.nus.edu.sg.viewbinding.caproject.model.BuyTiming
 import iss.nus.edu.sg.viewbinding.caproject.model.CurrentTiming
+import iss.nus.edu.sg.viewbinding.caproject.model.HotelCandidate
+import iss.nus.edu.sg.viewbinding.caproject.model.HotelFairPrice
 import iss.nus.edu.sg.viewbinding.caproject.model.HotelPricePrediction
 import iss.nus.edu.sg.viewbinding.caproject.model.PriceAdvice
 import iss.nus.edu.sg.viewbinding.caproject.model.PriceRange
@@ -12,6 +14,9 @@ import iss.nus.edu.sg.viewbinding.caproject.network.ApiFailureKind
 import iss.nus.edu.sg.viewbinding.caproject.network.ApiResult
 import iss.nus.edu.sg.viewbinding.caproject.network.MlApi
 import iss.nus.edu.sg.viewbinding.caproject.network.executeApiCall
+import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.CandidateHotelDto
+import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelFairPriceRequest
+import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelFairPriceResponse
 import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelPricePredictionRequest
 import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.HotelPricePredictionResponse
 import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.PriceAdviceRequest
@@ -19,6 +24,12 @@ import iss.nus.edu.sg.viewbinding.caproject.network.model.ml.PriceAdviceResponse
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.Locale
+
+/** Either a usable V3 verdict, or the documented reason there isn't one. */
+sealed interface HotelFairPriceOutcome {
+    data class Available(val value: HotelFairPrice) : HotelFairPriceOutcome
+    data class Unavailable(val reason: String) : HotelFairPriceOutcome
+}
 
 class MlRepository(
     private val mlApi: MlApi,
@@ -53,6 +64,77 @@ class MlRepository(
                     onFailure = { ApiResult.Failure(ApiFailureKind.INVALID_RESPONSE) },
                 )
         }
+    }
+
+    /**
+     * India hotel fair price (V3), including this trip's candidate context.
+     *
+     * `candidates` carries identity only; the ML service re-probes each hotel
+     * on its own one-night INR contract, so no Agent price is ever sent. The
+     * hotel being judged may appear in the list - the backend removes it.
+     *
+     * A well-formed "predictionAvailable: false" is NOT a failure: it is the
+     * documented answer for an unsupported market, lead time or missing rate,
+     * and is surfaced as [HotelFairPriceOutcome.Unavailable] so the caller can
+     * fall back to price advice and record why.
+     */
+    suspend fun predictHotelFairPrice(
+        hotelId: String,
+        hotelName: String,
+        checkInDate: LocalDate,
+        candidates: List<HotelCandidate>,
+        bookingDate: LocalDate = LocalDate.now(),
+    ): ApiResult<HotelFairPriceOutcome> {
+        val request = HotelFairPriceRequest(
+            hotelId = hotelId.trim(),
+            hotelName = hotelName.trim(),
+            bookingDate = bookingDate.toString(),
+            checkInDate = checkInDate.toString(),
+            candidateHotels = candidates.map {
+                CandidateHotelDto(hotelId = it.hotelId.trim(), hotelName = it.hotelName?.trim())
+            },
+        )
+        return when (val result = executeApiCall(gson) { mlApi.predictHotelFairPrice(request) }) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> runCatching { result.value.toOutcome() }
+                .fold(
+                    onSuccess = { ApiResult.Success(it) },
+                    onFailure = { ApiResult.Failure(ApiFailureKind.INVALID_RESPONSE) },
+                )
+        }
+    }
+
+    private fun HotelFairPriceResponse.toOutcome(): HotelFairPriceOutcome {
+        if (predictionAvailable != true) {
+            return HotelFairPriceOutcome.Unavailable(
+                reason.orEmpty().trim().ifBlank { "UNAVAILABLE" },
+            )
+        }
+        val low = requireNotNull(decisionLow)
+        val high = requireNotNull(decisionHigh)
+        val current = requireNotNull(currentComparablePrice)
+        val level = requireNotNull(priceLevel).trim().uppercase(Locale.ENGLISH)
+        require(level in setOf("CHEAP", "FAIR", "EXPENSIVE"))
+        require(low <= high && current.signum() > 0)
+        val currencyCode = requireNotNull(currency).trim().uppercase(Locale.ENGLISH)
+        require(currencyCode.length == 3)
+        return HotelFairPriceOutcome.Available(
+            HotelFairPrice(
+                source = predictionSource.orEmpty().trim(),
+                // These are the FINAL numbers - already context-adjusted by the
+                // backend when it applied one. Never re-scale them here.
+                fairPriceP25 = requireNotNull(fairPriceP25),
+                fairPriceP50 = requireNotNull(fairPriceP50),
+                fairPriceP75 = requireNotNull(fairPriceP75),
+                decisionLow = low,
+                decisionHigh = high,
+                currentComparablePrice = current,
+                priceLevel = level,
+                currency = currencyCode,
+                contextAdjustmentApplied = contextAdjustmentApplied == true,
+                modelVersion = modelVersion.orEmpty().trim(),
+            ),
+        )
     }
 
     suspend fun getPriceAdvice(

@@ -5,9 +5,15 @@ Duffel Stays requires sales approval (not available for self-service accounts).
 LiteAPI offers genuine self-service sandbox access - see team discussion.
 Docs: https://docs.liteapi.travel/reference
 """
+from datetime import datetime
+
 import httpx
+
 import config
 from agent.http_utils import retry_on_timeout
+
+RATE_CURRENCY = "USD"
+
 
 def _liteapi_headers() -> dict:
     return {
@@ -37,11 +43,33 @@ async def _get_hotel_list(latitude: float, longitude: float, radius: int = 5000)
     return data.get("data", [])
 
 
+def nights_between(check_in: str, check_out: str) -> int:
+    """Number of nights for a check-in/check-out pair, floored at 1.
+
+    LiteAPI prices a stay, not a night, so this is what converts its amount
+    into a per-night figure. Unparseable or non-positive spans fall back to 1
+    so a bad date can never inflate a nightly rate by dividing by zero.
+    """
+    try:
+        ci = datetime.strptime(str(check_in), "%Y-%m-%d")
+        co = datetime.strptime(str(check_out), "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return 1
+    return max((co - ci).days, 1)
+
+
 @retry_on_timeout(max_attempts=3)
 async def _get_hotel_rates(hotel_ids: list[str], check_in: str, check_out: str,
                             guest_nationality: str = "SG") -> dict:
     """Retrieves live rates for a specific set of hotel IDs.
-    Returns a dict keyed by hotelId -> {price, offerId} for the cheapest rate found."""
+
+    Returns hotelId -> {stayTotalPrice, offerId} for the cheapest rate found.
+
+    NOTE ON UNITS: `offerRetailRate.amount` is the total for the WHOLE
+    check-in..check-out stay, not a nightly rate - the request below carries
+    the real trip dates. It was previously surfaced as "pricePerNight", which
+    made a multi-night total look like a per-night price to the LLM, to Spring
+    and to the app."""
     if not hotel_ids:
         return {}
 
@@ -49,7 +77,7 @@ async def _get_hotel_rates(hotel_ids: list[str], check_in: str, check_out: str,
         "hotelIds": hotel_ids,
         "occupancies": [{"adults": 1}],
         "guestNationality": guest_nationality,
-        "currency": "USD",
+        "currency": RATE_CURRENCY,
         "checkin": check_in,
         "checkout": check_out,
         "roomMapping": False,
@@ -78,7 +106,7 @@ async def _get_hotel_rates(hotel_ids: list[str], check_in: str, check_out: str,
         )
         if cheapest_room:
             rates_by_hotel[hotel_id] = {
-                "price": cheapest_room["offerRetailRate"]["amount"],
+                "stayTotalPrice": cheapest_room["offerRetailRate"]["amount"],
                 "offerId": cheapest_room["offerId"],
             }
     return rates_by_hotel
@@ -109,25 +137,37 @@ async def search_hotels_by_coordinates(latitude: float, longitude: float, check_
         h["id"]: t for h, t in zip(hotels_with_coords, travel_times)
     }
 
+    nights = nights_between(check_in, check_out)
+
     def _build_results(max_price):
+        """`max_price` is a WHOLE-STAY hotel budget, so it is compared against
+        stayTotalPrice - unchanged from before. Ordering is also unchanged:
+        the old sort key was the same stay total, just misnamed."""
         results = []
         for hotel in hotels:
             rate_info = rates.get(hotel["id"])
-            if rate_info is None or rate_info["price"] > max_price:
+            if rate_info is None or rate_info["stayTotalPrice"] > max_price:
                 continue
+            stay_total = rate_info["stayTotalPrice"]
             results.append({
                 "hotelId": hotel.get("id"),
                 "name": hotel.get("name"),
                 "city": hotel.get("city"),
                 "address": hotel.get("address"),
-                "pricePerNight": rate_info["price"],
+                "stayTotalPrice": stay_total,
+                "averagePricePerNight": round(stay_total / nights, 2),
+                "numberOfNights": nights,
+                "currency": RATE_CURRENCY,
+                # Kept for backward compatibility, but now it really IS a
+                # per-night figure - it used to carry the stay total.
+                "pricePerNight": round(stay_total / nights, 2),
                 "rating": hotel.get("rating"),
                 "offerId": rate_info["offerId"],
                 "latitude": hotel.get("latitude"),
                 "longitude": hotel.get("longitude"),
                 "estimatedTravelTimeFromSearchOriginMinutes": travel_time_by_id.get(hotel["id"]),
             })
-        return sorted(results, key=lambda h: h["pricePerNight"])[:5]
+        return sorted(results, key=lambda h: h["stayTotalPrice"])[:5]
 
     results = _build_results(budget)
     if results:
