@@ -20,15 +20,25 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserService userService;
 
     public AuthService(AuthenticationManager authenticationManager,
                        JwtTokenProvider jwtTokenProvider,
                        UserRepository userRepository,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       UserService userService) {
         this.authenticationManager = authenticationManager;
         this.jwtTokenProvider = jwtTokenProvider;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.userService = userService;
+    }
+
+    /** Forgot-password flow: account verified by username + profile fields,
+     * then the new password is set (no login required). */
+    public void forgotPassword(String username, String email, String department,
+                               String phone, String newPassword) {
+        userService.forgotPassword(username, email, department, phone, newPassword);
     }
 
     /**

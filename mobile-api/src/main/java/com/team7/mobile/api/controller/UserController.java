@@ -36,10 +36,19 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("Profile updated", userService.updateMe(fields)));
     }
 
-    /** Change password. Body: { "oldPassword": "...", "newPassword": "..." } */
+    /** Reset/change password.
+     * Body: { "username", "email", "department", "phone", "oldPassword", "newPassword" }
+     * All account details are verified against the signed-in record, then the
+     * old password, before the new password is applied. */
     @PutMapping("/me/password")
     public ResponseEntity<ApiResponse<Void>> changePassword(@RequestBody Map<String, String> body) {
-        userService.changePassword(body.get("oldPassword"), body.get("newPassword"));
+        userService.changePassword(
+                body.get("username"),
+                body.get("email"),
+                body.get("department"),
+                body.get("phone"),
+                body.get("oldPassword"),
+                body.get("newPassword"));
         return ResponseEntity.ok(ApiResponse.success("Password changed", null));
     }
 }

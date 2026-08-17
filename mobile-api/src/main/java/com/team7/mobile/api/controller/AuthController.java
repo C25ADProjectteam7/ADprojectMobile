@@ -29,4 +29,20 @@ public class AuthController {
         authService.register(request);
         return ResponseEntity.ok(Map.of("message", "Registration successful"));
     }
+
+    /**
+     * Forgot password (public, no auth required): verifies the account via
+     * username + email + department + phone, then sets the new password.
+     * Body: { "username", "email", "department", "phone", "newPassword" }
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, String>> forgotPassword(@RequestBody Map<String, String> body) {
+        authService.forgotPassword(
+                body.get("username"),
+                body.get("email"),
+                body.get("department"),
+                body.get("phone"),
+                body.get("newPassword"));
+        return ResponseEntity.ok(Map.of("message", "Password reset successfully. Please log in with your new password."));
+    }
 }

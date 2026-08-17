@@ -55,14 +55,61 @@ public class UserService {
         return toDTO(user);
     }
 
-    /** Change password — verifies the old password first. */
-    public void changePassword(String oldPassword, String newPassword) {
+    /**
+     * Forgot password (public flow, no login required): the account is
+     * verified by username + the four profile fields matching the backend
+     * record exactly (school-project MVP - no email/SMS sending), then the
+     * new password is set. The app copy states: "all account details must
+     * match the backend record before the password can be changed".
+     */
+    public void forgotPassword(String username, String email, String department,
+                               String phone, String newPassword) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BusinessException("USER_NOT_FOUND",
+                        "Account not found", 404));
+        requireProfileMatch(user, email, department, phone);
+        setNewPassword(user, newPassword);
+    }
+
+    /**
+     * Reset / change password - the mobile app additionally sends the full
+     * account details (username, email, department, phone) to confirm the
+     * identity before accepting the old password. All of them must match.
+     */
+    public void changePassword(String username, String email, String department,
+                               String phone, String oldPassword, String newPassword) {
         User user = requireUser();
+        requireProfileMatch(user, email, department, phone);
+        if (username != null && !username.isBlank()
+                && !user.getUsername().equalsIgnoreCase(username.trim())) {
+            throw new BusinessException("ACCOUNT_MISMATCH",
+                    "Username does not match the signed-in account", 400);
+        }
         if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
             throw new BusinessException("INVALID_OLD_PASSWORD", "Old password is incorrect", 400);
         }
+        setNewPassword(user, newPassword);
+    }
+
+    /** All four profile fields must match the stored record exactly. */
+    private void requireProfileMatch(User user, String email, String department, String phone) {
+        if (!equalsIgnoreCaseTrim(user.getEmail(), email)
+                || !equalsIgnoreCaseTrim(user.getDepartment(), department)
+                || !equalsIgnoreCaseTrim(user.getPhone(), phone)) {
+            throw new BusinessException("ACCOUNT_MISMATCH",
+                    "Account details do not match our records", 400);
+        }
+    }
+
+    private boolean equalsIgnoreCaseTrim(String stored, String given) {
+        if (stored == null || given == null) return false;
+        return stored.trim().equalsIgnoreCase(given.trim());
+    }
+
+    private void setNewPassword(User user, String newPassword) {
         if (newPassword == null || newPassword.length() < 8) {
-            throw new BusinessException("WEAK_PASSWORD", "New password must be at least 8 characters", 400);
+            throw new BusinessException("WEAK_PASSWORD",
+                    "New password must be at least 8 characters", 400);
         }
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
