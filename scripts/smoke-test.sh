@@ -43,6 +43,13 @@ check() {
 
 echo "== Smoke tests against $BASE_URL =="
 
+# The API may still be booting right after a fresh deploy — wait up to 60s
+for i in $(seq 1 20); do
+    curl -s -m 3 -o /dev/null "$BASE_URL/actuator/health" && break
+    [ "$i" = "20" ] && echo "WARN: API not reachable yet, continuing anyway"
+    sleep 3
+done
+
 # 1. Health check (public)
 check "health" 200 'UP' "$BASE_URL/actuator/health"
 
