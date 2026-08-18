@@ -37,10 +37,16 @@ subprojects {
     spotbugs {
         ignoreFailures = true   // tighten when real code is in place
         showStackTraces = true
+    }
+
+    // HTML report (build/reports/spotbugs/<sourceSet>.html) — required for
+    // the CI artifact upload + GitHub Pages publishing. Note: the reports
+    // container lives on the TASK in plugin 6.x, not on the extension.
+    tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
         reports {
-            // HTML report (build/reports/spotbugs/<sourceSet>.html) —
-            // required for the CI artifact upload + GitHub Pages publishing
-            html { required = true }
+            html {
+                required = true
+            }
         }
     }
 
