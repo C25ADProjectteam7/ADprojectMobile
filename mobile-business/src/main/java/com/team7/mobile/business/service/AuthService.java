@@ -9,7 +9,6 @@ import com.team7.mobile.data.repository.UserRepository;
 import com.team7.mobile.security.jwt.JwtTokenProvider;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -45,7 +44,8 @@ public class AuthService {
      * Authenticate user and return JWT token.
      */
     public LoginResponse login(LoginRequest request) {
-        Authentication auth = authenticationManager.authenticate(
+        // authenticate() throws on bad credentials; the result is not needed
+        authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
         );
         User user = userRepository.findByUsername(request.getUsername())

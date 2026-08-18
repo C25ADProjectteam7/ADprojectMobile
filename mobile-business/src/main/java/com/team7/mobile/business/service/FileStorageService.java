@@ -19,7 +19,7 @@ import java.util.UUID;
  * Files land under <upload-dir>/receipts/YYYY-MM-DD/<uuid>.<ext>.
  */
 @Service
-public class FileStorageService {
+public final class FileStorageService {
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp", "gif");
     private static final long MAX_SIZE_BYTES = 10L * 1024 * 1024;  // 10MB
