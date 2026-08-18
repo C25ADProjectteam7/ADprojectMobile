@@ -201,7 +201,7 @@ jobs:
   deploy:
     name: Deploy to Digital Ocean
     runs-on: ubuntu-latest
-    needs: [docker]
+    needs: [docker, agent-ml-test]
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -223,3 +223,21 @@ jobs:
             docker compose ps
             echo "=== DEPLOY COMPLETED ==="
           '
+
+  # ============================================================
+  # Stage 6: Smoke Test — functional verification of the live
+  # deployment (health, auth, authenticated reads, ML advice).
+  # A broken deploy fails this job and is visible in the run.
+  # ============================================================
+  smoke:
+    name: Smoke Test (live)
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke tests against the live deployment
+        run: bash scripts/smoke-test.sh
+        env:
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
