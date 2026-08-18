@@ -282,15 +282,20 @@ jobs:
         with:
           name: spotbugs-reports
           path: reports/spotbugs
+        continue-on-error: true   # spotbugs reports may be absent; OWASP always publishes
       - name: Build report site
         run: |
           mkdir -p _site
           find reports/owasp -name 'dependency-check*.html' -exec cp {} _site/dependency-check.html \;
-          for f in $(find reports/spotbugs -name 'main.html'); do
+          for f in $(find reports/spotbugs -name 'main.html' 2>/dev/null); do
             mod=$(echo "$f" | sed -E 's#.*/([^/]+)/build/reports/spotbugs/main.html#\1#')
             cp "$f" "_site/spotbugs-$mod.html"
           done
           touch _site/.nojekyll
+          SB_LI=""
+          for f in _site/spotbugs-*.html; do
+            [ -e "$f" ] && SB_LI="$SB_LI<li><a href=\"$(basename "$f")\">SpotBugs — $(basename "$f" .html | sed 's/spotbugs-//')</a></li>"
+          done
           cat > _site/index.html <<HTML
           <!DOCTYPE html>
           <html lang="en">
@@ -301,11 +306,7 @@ jobs:
           <p>Commit <code>${GITHUB_SHA:0:7}</code> · <a href="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}">run #${GITHUB_RUN_NUMBER}</a></p>
           <ul>
           <li><a href="dependency-check.html">OWASP Dependency-Check report</a></li>
-          <li><a href="spotbugs-mobile-common.html">SpotBugs — mobile-common</a></li>
-          <li><a href="spotbugs-mobile-data.html">SpotBugs — mobile-data</a></li>
-          <li><a href="spotbugs-mobile-security.html">SpotBugs — mobile-security</a></li>
-          <li><a href="spotbugs-mobile-business.html">SpotBugs — mobile-business</a></li>
-          <li><a href="spotbugs-mobile-api.html">SpotBugs — mobile-api</a></li>
+          ${SB_LI}
           </ul>
           <p>Trivy container-scan alerts: <a href="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/security/code-scanning">Security → Code Scanning</a></p>
           </body></html>

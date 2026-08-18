@@ -37,6 +37,11 @@ subprojects {
     spotbugs {
         ignoreFailures = true   // tighten when real code is in place
         showStackTraces = true
+        reports {
+            // HTML report (build/reports/spotbugs/<sourceSet>.html) —
+            // required for the CI artifact upload + GitHub Pages publishing
+            html { required = true }
+        }
     }
 
     // OWASP Dependency Check — CVE scan for third-party libs
