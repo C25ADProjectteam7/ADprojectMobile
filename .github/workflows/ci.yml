@@ -222,8 +222,10 @@ jobs:
           MYSQL_PASSWORD=Mobile@2026!
           MYSQL_DATABASE=mobile
           DB_PASSWORD=Mobile@2026!
+          # JWT keys are read as UTF-8 bytes (not base64); jjwt requires
+          # >= 256 bits, so each dummy must be >= 32 characters
           JWT_SECRET=dummy-jwt-secret-key-for-ci-scan-only-0123456789abcdef
-          JWT_TRUSTED_SECRETS=dummy-ci-secret
+          JWT_TRUSTED_SECRETS=dummy-ci-trusted-secret-0123456789abcdefghijklmno
           AMADEUS_API_KEY=dummy
           AMADEUS_API_SECRET=dummy
           GOOGLE_PLACES_API_KEY=dummy
