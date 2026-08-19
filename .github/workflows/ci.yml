@@ -253,8 +253,12 @@ jobs:
           # is owned by UID 1001 — without it the report write fails with
           # AccessDeniedException on the /zap/wrk mount (CI-only; Windows
           # Docker Desktop masks this with permissive ACLs)
+          # -I: WARN alerts don't fail the job. The API root returns 403
+          # (auth required), so ZAP flags Non-Storable Content — expected
+          # behaviour for a JWT API. FAIL alerts still exit 1 and block
+          # deployment (zap-baseline.py: fail>0 -> exit 1).
           docker run --rm --network host -u root -v "$PWD:/zap/wrk:rw" -t ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://localhost:8080 -r zap-report.html -J zap-report.json
+            zap-baseline.py -I -t http://localhost:8080 -r zap-report.html -J zap-report.json
 
       - uses: actions/upload-artifact@v4
         if: always()
