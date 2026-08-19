@@ -249,7 +249,11 @@ jobs:
 
       - name: Run ZAP baseline scan
         run: |
-          docker run --rm --network host -v "$PWD:/zap/wrk:rw" -t ghcr.io/zaproxy/zaproxy:stable \
+          # -u root: the ZAP image runs as UID 1000 but the runner workspace
+          # is owned by UID 1001 — without it the report write fails with
+          # AccessDeniedException on the /zap/wrk mount (CI-only; Windows
+          # Docker Desktop masks this with permissive ACLs)
+          docker run --rm --network host -u root -v "$PWD:/zap/wrk:rw" -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t http://localhost:8080 -r zap-report.html -J zap-report.json
 
       - uses: actions/upload-artifact@v4
