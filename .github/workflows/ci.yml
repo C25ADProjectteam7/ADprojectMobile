@@ -201,12 +201,72 @@ jobs:
           sarif_file: "trivy-results.sarif"
 
   # ============================================================
+  # Stage 4b: DAST — dynamic scan of the built image BEFORE deploy.
+  # Boots mysql + spring-api (+ agent-ml) in the runner, runs the
+  # OWASP ZAP baseline scan against localhost, uploads the report.
+  # deploy waits for this job, so a failing DAST blocks release.
+  # ============================================================
+  dast:
+    name: DAST (OWASP ZAP)
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare test .env (dummy secrets, CI-only)
+        run: |
+          cat > .env <<ENV
+          MYSQL_ROOT_PASSWORD=Root@2026!
+          MYSQL_PASSWORD=Mobile@2026!
+          MYSQL_DATABASE=mobile
+          DB_PASSWORD=Mobile@2026!
+          JWT_SECRET=dummy-jwt-secret-key-for-ci-scan-only-0123456789abcdef
+          JWT_TRUSTED_SECRETS=dummy-ci-secret
+          AMADEUS_API_KEY=dummy
+          AMADEUS_API_SECRET=dummy
+          GOOGLE_PLACES_API_KEY=dummy
+          DEEPSEEK_API_KEY=dummy
+          DUFFEL_API_TOKEN=duffel_test_dummy
+          LITEAPI_API_KEY=sand_dummy
+          ENV
+
+      - name: Boot the stack (mysql + agent-ml + spring-api)
+        run: |
+          docker compose up -d mysql spring-api
+          docker compose ps
+
+      - name: Wait for the API to come up
+        run: |
+          for i in $(seq 1 30); do
+            curl -s -m 3 -o /dev/null http://localhost:8080/actuator/health && break
+            sleep 3
+          done
+          curl -s -m 5 http://localhost:8080/actuator/health
+
+      - name: Run ZAP baseline scan
+        run: |
+          docker run --rm --network host -v "$PWD:/zap/wrk:rw" -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:8080 -r zap-report.html -J zap-report.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-report
+          path: "zap-report.*"
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+
+  # ============================================================
   # Stage 5: Deploy to Digital Ocean (main branch only)
   # ============================================================
   deploy:
     name: Deploy to Digital Ocean
     runs-on: ubuntu-latest
-    needs: [docker]
+    needs: [docker, dast]
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -263,7 +323,7 @@ jobs:
   pages:
     name: Publish Security Reports (Pages)
     runs-on: ubuntu-latest
-    needs: [sast]
+    needs: [sast, dast]
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
@@ -283,6 +343,11 @@ jobs:
           name: spotbugs-reports
           path: reports/spotbugs
         continue-on-error: true   # spotbugs reports may be absent; OWASP always publishes
+      - uses: actions/download-artifact@v4
+        with:
+          name: zap-report
+          path: reports/zap
+        continue-on-error: true   # DAST report may be absent; OWASP always publishes
       - name: Build report site
         run: |
           mkdir -p _site
@@ -291,11 +356,14 @@ jobs:
             mod=$(echo "$f" | sed -E 's#.*/([^/]+)/build/reports/spotbugs/main.html#\1#')
             cp "$f" "_site/spotbugs-$mod.html"
           done
+          find reports/zap -name 'zap-report.html' -exec cp {} _site/zap-report.html \; 2>/dev/null
           touch _site/.nojekyll
           SB_LI=""
           for f in _site/spotbugs-*.html; do
             [ -e "$f" ] && SB_LI="$SB_LI<li><a href=\"$(basename "$f")\">SpotBugs — $(basename "$f" .html | sed 's/spotbugs-//')</a></li>"
           done
+          ZAP_LI=""
+          [ -f _site/zap-report.html ] && ZAP_LI='<li><a href="zap-report.html">DAST — OWASP ZAP baseline</a></li>'
           cat > _site/index.html <<HTML
           <!DOCTYPE html>
           <html lang="en">
@@ -306,6 +374,7 @@ jobs:
           <p>Commit <code>${GITHUB_SHA:0:7}</code> · <a href="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}">run #${GITHUB_RUN_NUMBER}</a></p>
           <ul>
           <li><a href="dependency-check.html">OWASP Dependency-Check report</a></li>
+          ${ZAP_LI}
           ${SB_LI}
           </ul>
           <p>Trivy container-scan alerts: <a href="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/security/code-scanning">Security → Code Scanning</a></p>
