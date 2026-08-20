@@ -1,0 +1,68 @@
+{
+ "name": "M2",
+ "frozenAt": "2026-08-15",
+ "features": [
+  "market",
+  "star_bucket",
+  "stars_num",
+  "room_category",
+  "board_category",
+  "cancellation_category",
+  "leadTimeDays",
+  "guest_rating",
+  "has_guest_rating",
+  "log_review_count",
+  "chain",
+  "hotelTypeId",
+  "n_facilities"
+ ],
+ "categoricalFeatures": [
+  "market",
+  "star_bucket",
+  "room_category",
+  "board_category",
+  "cancellation_category",
+  "chain"
+ ],
+ "target": "price  (one-night comparable INR, 1 room / 2 adults / 0 children / 1 night)",
+ "catboostParams": {
+  "loss_function": "MultiQuantile:alpha=0.25,0.5,0.75",
+  "iterations": 500,
+  "depth": 6,
+  "learning_rate": 0.1,
+  "random_seed": 20260815,
+  "verbose": 0,
+  "thread_count": -1
+ },
+ "weighting": "hotel-balanced: row weight = 1 / (rows for that hotel in the training set)",
+ "missingSemantics": {
+  "guest_rating": "NaN when LiteAPI rating is null or 0; has_guest_rating flag carries the fact",
+  "log_review_count": "log1p(reviewCount) ; NaN when reviewCount is null or 0",
+  "stars_num": "-1 when stars null/0 ; star_bucket='UNRATED' carries the same fact",
+  "chain": "'NA' when null/empty (LiteAPI also emits the literal 'Not Available')"
+ },
+ "transforms": {
+  "log_review_count": "log1p",
+  "n_facilities": "len(facilityIds)",
+  "star_bucket": "UNRATED / 1-2 / 3 / 4 / 5"
+ },
+ "excluded": [
+  "hotelId (exact identity)",
+  "any current/target price",
+  "facilityIds raw 482-dim list"
+ ],
+ "datasetSha256": {
+  "canonical.parquet": "ae859754c2f561b4524d08c7d80888816fe4caf262ddb57345a84f1c036e9dce",
+  "metadata.jsonl": "00f05d6e143b9277e9ff28bcfe367a218121ba038800109a82745478b459abc2",
+  "collection_status.jsonl": "cbe7eccba8829db709c794700ecc31a1b0a71e56ac71b5cc8e1e85e44beac7f3"
+ },
+ "splitManifestSha256": "fecf56d428db5c91c44ed91c77e5c06bd82139471608d0390395011fae360143",
+ "devEvidence": {
+  "folds": 5,
+  "seed": 20260815,
+  "minHotelsBucket": 8,
+  "hotelBalanced_MdAPE": 0.341,
+  "B2_MdAPE": 0.394,
+  "rawCoverage": 0.283
+ }
+}
