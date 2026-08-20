@@ -1,0 +1,10 @@
+{
+ "qhat": 0.420727990504081,
+ "score": "normalized CQR, hotel-balanced quantile",
+ "calCoverageRaw": 0.30346900504584745,
+ "calCoverageCalibrated": 0.4992563943571245,
+ "widthRaw": 0.39889970275446907,
+ "widthCalibrated": 0.7345562434595951,
+ "calHotels": 150,
+ "calRows": 2888
+}
